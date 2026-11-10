@@ -14,6 +14,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Accueil', icon: 'M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z' },
+  { to: '/versements', label: 'Versements', icon: 'M3 7h18v12H3zM3 11h18M7 15h4M16 3l-4 4-4-4', perm: 'payments.view' },
   { to: '/engins', label: 'Engins', icon: 'M5 17h14M3 17v-4l2-5a2 2 0 0 1 2-1h10a2 2 0 0 1 2 1l2 5v4h-2M7 17a2 2 0 1 0 4 0M13 17a2 2 0 1 0 4 0M3 13h18', perm: 'vehicles.view' },
   { to: '/chauffeurs', label: 'Chauffeurs', icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8', perm: 'drivers.view' },
   { to: '/menu', label: 'Menu', icon: 'M4 6h16M4 12h16M4 18h16', show: 'mobile' },

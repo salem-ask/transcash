@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { backend } from '../../data'
 import { useSession } from '../../app/session'
 import { Money } from '../../components/Money'
-import { Alert, Card, Spinner } from '../../components/ui'
+import { Alert, ButtonLink, Card, Spinner } from '../../components/ui'
+import { useLoad } from '../../lib/useLoad'
+import { DayStatePill, LedgerView } from '../payments/LedgerView'
 import { formatRate } from '../../domain/money'
 import { can } from '../../domain/permissions'
 import type { Dashboard } from '../../domain/types'
@@ -20,8 +22,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 }
 
 const UPCOMING = [
-  { title: 'Versements, dettes et reçus', phase: 3 },
-  { title: 'Dépenses et pannes', phase: 4 },
+  { title: 'Dépenses, immobilisations, caisse', phase: 4 },
   { title: 'Rapports PDF / Excel', phase: 5 },
 ]
 
@@ -31,6 +32,9 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const tz = bundle?.settings.timezone
 
+  const isDriver = !can(session?.user?.role, 'dashboard.view')
+  const own = useLoad(() => (isDriver ? backend.myLedger() : Promise.resolve(null)), [isDriver])
+
   useEffect(() => {
     backend.dashboard().then(setData, (e) => setError(e.message))
   }, [bundle])
@@ -38,10 +42,9 @@ export function DashboardPage() {
   if (error) return <Alert>{error}</Alert>
   if (!data) return <Spinner />
 
-  const isDriver = !can(session?.user?.role, 'dashboard.view')
   const canOpen = can(session?.user?.role, 'vehicles.view')
   const c = data.currency
-  const order = { due: 0, no_driver: 1, rest: 2, not_started: 3 }
+  const order = { due: 0, no_driver: 1, breakdown: 2, rest: 3, not_started: 4 }
   const lines = [...data.lines].sort((a, b) => order[a.status] - order[b.status] || a.vehicleName.localeCompare(b.vehicleName))
 
   return (
@@ -55,9 +58,46 @@ export function DashboardPage() {
         <div className="grid grid-cols-3 gap-2">
           <Stat label="Attendu"><Money amount={data.today.expected} currency={c} /></Stat>
           <Stat label="Versé"><Money amount={data.today.paid} currency={c} /></Stat>
-          <Stat label="Manque"><Money amount={data.today.debt} currency={c} /></Stat>
+          <Stat label="Manque">
+            <Money amount={data.today.debt} currency={c} className={data.today.debt ? 'text-danger' : ''} />
+          </Stat>
         </div>
+        {!isDriver && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Stat label="Encaissé aujourd'hui"><Money amount={data.today.received} currency={c} /></Stat>
+            <Link to="/versements" className="rounded-xl hover:ring-2 hover:ring-brand/30">
+              <Stat label="Dettes totales">
+                <Money amount={data.totalDebt} currency={c} className={data.totalDebt ? 'text-danger' : ''} />
+              </Stat>
+            </Link>
+          </div>
+        )}
+        {!isDriver && can(session?.user?.role, 'payments.create') && (
+          <div className="mt-3">
+            <ButtonLink to="/versements/nouveau">Encaisser un versement</ButtonLink>
+          </div>
+        )}
       </Card>
+
+      {isDriver && own.data && <LedgerView data={own.data} canCollect={false} />}
+
+      {!isDriver && data.debtors.length > 0 && (
+        <Card title="Plus grosses dettes" action={<Link to="/versements" className="text-sm font-medium text-brand">Tout voir</Link>}>
+          <ul className="divide-y divide-line">
+            {data.debtors.slice(0, 3).map((x) => (
+              <li key={x.driverId}>
+                <Link to={`/chauffeurs/${x.driverId}`} className="flex items-center justify-between gap-3 py-2 hover:bg-surface-2">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{x.driverName}</span>
+                    <span className="text-xs text-ink-soft">{x.unpaidDays} jour{x.unpaidDays > 1 ? 's' : ''} impayé{x.unpaidDays > 1 ? 's' : ''}</span>
+                  </span>
+                  <Money amount={x.debt} currency={c} className="items-end text-sm text-danger" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {data.missingRate && (
         <Alert>Certains montants sont dans l'autre devise et aucun taux de change n'est disponible : saisissez un taux dans les paramètres.</Alert>
@@ -95,7 +135,7 @@ export function DashboardPage() {
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1 text-sm">
                       {l.status === 'due' ? <Money amount={l.amount} currency={l.currency} className="items-end" /> : null}
-                      <Pill kind={l.status} />
+                      {l.status === 'due' ? <DayStatePill day={{ kind: 'due', state: l.state }} /> : <Pill kind={l.status} />}
                     </div>
                   </>
                 )
@@ -118,12 +158,12 @@ export function DashboardPage() {
 
       {!isDriver && (
         <Card title="Ce mois">
-          <div className="grid grid-cols-2 gap-2">
-            <Stat label="Versements"><Money amount={data.month.paid} currency={c} /></Stat>
+          <div className="grid grid-cols-3 gap-2">
+            <Stat label="Encaissé"><Money amount={data.month.paid} currency={c} /></Stat>
             <Stat label="Dépenses"><Money amount={data.month.expenses} currency={c} /></Stat>
             <Stat label="Bénéfice réel"><Money amount={data.month.profit} currency={c} /></Stat>
-            <Stat label="Dettes totales"><Money amount={data.totalDebt} currency={c} /></Stat>
           </div>
+          <p className="mt-2 text-xs text-ink-soft">Les dépenses seront suivies à partir de la phase 4.</p>
         </Card>
       )}
 

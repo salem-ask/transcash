@@ -9,6 +9,9 @@ import { SettingsPage } from '../features/settings/SettingsPage'
 import { UsersPage } from '../features/users/UsersPage'
 import { AccountPage } from '../features/account/AccountPage'
 import { MenuPage } from '../features/account/MenuPage'
+import { PaymentsPage } from '../features/payments/PaymentsPage'
+import { NewPaymentPage } from '../features/payments/NewPaymentPage'
+import { ReceiptPage } from '../features/payments/ReceiptPage'
 import { VehiclesPage } from '../features/vehicles/VehiclesPage'
 import { VehicleFormPage } from '../features/vehicles/VehicleFormPage'
 import { VehicleDetailPage } from '../features/vehicles/VehicleDetailPage'
@@ -53,6 +56,9 @@ function Root() {
         <Route path="chauffeurs/nouveau" element={<Guard perm="drivers.manage"><DriverFormPage /></Guard>} />
         <Route path="chauffeurs/:id" element={<Guard perm="drivers.view"><DriverDetailPage /></Guard>} />
         <Route path="chauffeurs/:id/modifier" element={<Guard perm="drivers.manage"><DriverFormPage /></Guard>} />
+        <Route path="versements" element={<Guard perm="payments.view"><PaymentsPage /></Guard>} />
+        <Route path="versements/nouveau" element={<Guard perm="payments.create"><NewPaymentPage /></Guard>} />
+        <Route path="versements/:id" element={<ReceiptPage />} />
         <Route path="compte" element={<AccountPage />} />
         <Route path="menu" element={<MenuPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
