@@ -1,5 +1,11 @@
 import type {
   Dashboard,
+  LedgerPayload,
+  MarkDayInput,
+  NewPaymentInput,
+  Payment,
+  PaymentDetail,
+  VehicleDays,
   DriverDetail,
   Driver,
   DriverInput,
@@ -51,6 +57,18 @@ export interface Backend {
   updateDriver(id: string, input: DriverInput): Promise<DriverDetail>
   /** Crée l'accès de consultation du chauffeur (identifiant = son téléphone). */
   createDriverAccount(id: string, password: string): Promise<DriverDetail>
+
+  // Versements et dettes (phase 3)
+  /** Grand livre d'un chauffeur : journées, résumé (dettes, avance), derniers versements */
+  getLedger(driverId: string): Promise<LedgerPayload>
+  /** Pour le chauffeur connecté */
+  myLedger(): Promise<LedgerPayload>
+  listPayments(date: string): Promise<Payment[]>
+  getPayment(id: string): Promise<PaymentDetail>
+  createPayment(input: NewPaymentInput): Promise<PaymentDetail>
+  cancelPayment(id: string, reason: string): Promise<PaymentDetail>
+  vehicleDays(vehicleId: string): Promise<VehicleDays>
+  markDay(vehicleId: string, input: MarkDayInput): Promise<VehicleDays>
 }
 
 /** Erreur lisible par l'utilisateur, avec le code HTTP correspondant. */

@@ -1,6 +1,6 @@
 import type { Backend } from './backend'
 import { BackendError } from './backend'
-import type { Driver, DriverDetail, RatesBundle, SessionState, SettingsBundle, User, Vehicle, VehicleDetail } from '../domain/types'
+import type { LedgerPayload, Payment, PaymentDetail, VehicleDays, Driver, DriverDetail, RatesBundle, SessionState, SettingsBundle, User, Vehicle, VehicleDetail } from '../domain/types'
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? './api'
 
@@ -56,4 +56,13 @@ export const apiBackend: Backend = {
   createDriver: (input) => call<DriverDetail>('POST', '/drivers', input),
   updateDriver: (id, input) => call<DriverDetail>('PUT', `/drivers/${id}`, input),
   createDriverAccount: (id, password) => call<DriverDetail>('POST', `/drivers/${id}/account`, { password }),
+
+  getLedger: (id) => call<LedgerPayload>('GET', `/drivers/${id}/ledger`),
+  myLedger: () => call<LedgerPayload>('GET', '/me/ledger'),
+  listPayments: (date) => call<{ payments: Payment[] }>('GET', `/payments?date=${encodeURIComponent(date)}`).then((r) => r.payments),
+  getPayment: (id) => call<PaymentDetail>('GET', `/payments/${id}`),
+  createPayment: (input) => call<PaymentDetail>('POST', '/payments', input),
+  cancelPayment: (id, reason) => call<PaymentDetail>('POST', `/payments/${id}/cancel`, { reason }),
+  vehicleDays: (id) => call<VehicleDays>('GET', `/vehicles/${id}/days`),
+  markDay: (id, input) => call<VehicleDays>('POST', `/vehicles/${id}/days`, input),
 }

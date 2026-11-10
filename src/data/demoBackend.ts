@@ -4,10 +4,19 @@ import type { Backend } from './backend'
 import { BackendError } from './backend'
 import { can, type Permission } from '../domain/permissions'
 import { convert } from '../domain/money'
-import { addDays, amountOn, dayStatus, isValidDate, todayIn } from '../domain/fleet'
+import { addDays, isValidDate, todayIn } from '../domain/fleet'
+import { allocate, driverLedger, expectedFor, summarize, totalIn, type Allocation, type DayMark, type LedgerVehicle } from '../domain/ledger'
 import type {
   AmountChange,
   Assignment,
+  Dashboard,
+  DashboardLine,
+  Debtor,
+  LedgerPayload,
+  Payment,
+  PaymentDetail,
+  VehicleDay,
+  VehicleDays,
   Currency,
   Driver,
   DriverDetail,
@@ -22,7 +31,7 @@ import type {
   VehicleType,
 } from '../domain/types'
 
-const KEY = 'transcash-demo-v2'
+const KEY = 'transcash-demo-v3'
 export const DEMO_PASSWORD = 'demo1234'
 
 interface DemoUser extends User {
@@ -34,8 +43,14 @@ interface DemoVehicle extends Omit<Vehicle, 'currentDriver'> {
 interface DemoDriver extends Omit<Driver, 'currentVehicle' | 'hasAccount'> {
   userId: string | null
 }
+interface DemoPayment extends Omit<PaymentDetail, 'driverName' | 'driverPhone' | 'vehicleName' | 'createdByName' | 'allocations' | 'ownerName'> {
+  createdBy: string
+  allocations: Allocation[]
+}
 interface DemoState {
   ownerName: string
+  marks: DayMark[]
+  payments: DemoPayment[]
   users: DemoUser[]
   settings: Settings
   rates: ExchangeRate[]
@@ -48,9 +63,11 @@ interface DemoState {
 const id = () => crypto.randomUUID()
 const nowIso = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
 
-/** Parc d'exemple : quelques engins typiques de Kinshasa, avec un historique de chauffeurs. */
+/** Parc d'exemple : quelques engins typiques de Kinshasa, avec un historique récent (dates relatives à aujourd'hui). */
 function seed(): DemoState {
   const ownerId = id()
+  const today = todayIn('Africa/Kinshasa')
+  const day = (n: number) => addDays(today, n)
   const mkUser = (name: string, login: string, role: Role): DemoUser => ({
     id: id(), ownerId, name, login, role, active: true, lastLoginAt: null, password: DEMO_PASSWORD,
   })
@@ -65,13 +82,13 @@ function seed(): DemoState {
     id: id(), type, name, plate, model, dailyAmount: amount, currency, restWeekdays: null, serviceDate,
     status: 'active', notes: null, amounts: [{ amount, currency, effectiveFrom: serviceDate }],
   })
-  const taxi = mkVehicle('taxi', 'Taxi 1', 'KN 4521 BB', 'Toyota Corolla', 40000, 'CDF', '2026-01-05')
-  taxi.amounts.push({ amount: 45000, currency: 'CDF', effectiveFrom: '2026-07-01' })
+  const taxi = mkVehicle('taxi', 'Taxi 1', 'KN 4521 BB', 'Toyota Corolla', 40000, 'CDF', day(-30))
+  taxi.amounts.push({ amount: 45000, currency: 'CDF', effectiveFrom: day(-10) })
   taxi.dailyAmount = 45000
-  const moto = mkVehicle('moto', 'Moto TVS rouge', 'KN 7781 AM', 'TVS HLX 125', 15000, 'CDF', '2026-02-01')
-  const tri = mkVehicle('tricycle', 'Bajaj 2', 'KN 3302 TR', 'Bajaj RE', 25000, 'CDF', '2026-03-10')
-  const bus = mkVehicle('minibus', 'Hiace Matete', 'KN 1190 BS', 'Toyota Hiace', 3500, 'USD', '2026-01-15')
-  const truck = mkVehicle('camion', 'Camion benne', 'KN 0456 CM', 'Mitsubishi Canter', 5000, 'USD', '2026-04-01')
+  const moto = mkVehicle('moto', 'Moto TVS rouge', 'KN 7781 AM', 'TVS HLX 125', 15000, 'CDF', day(-25))
+  const tri = mkVehicle('tricycle', 'Bajaj 2', 'KN 3302 TR', 'Bajaj RE', 25000, 'CDF', day(-20))
+  const bus = mkVehicle('minibus', 'Hiace Matete', 'KN 1190 BS', 'Toyota Hiace', 3500, 'USD', day(-30))
+  const truck = mkVehicle('camion', 'Camion benne', 'KN 0456 CM', 'Mitsubishi Canter', 5000, 'USD', day(-5))
   truck.restWeekdays = [0, 6]
 
   const mkDriver = (name: string, phone: string, extra: Partial<DemoDriver> = {}): DemoDriver => ({
@@ -86,7 +103,18 @@ function seed(): DemoState {
   const mkA = (v: DemoVehicle, d: DemoDriver, startDate: string, endDate: string | null): Assignment => ({
     id: id(), vehicleId: v.id, vehicleName: v.name, driverId: d.id, driverName: d.name, startDate, endDate,
   })
-  return {
+  const assignments = [
+    mkA(taxi, jean, day(-30), null),
+    mkA(moto, patrick, day(-25), null),
+    mkA(tri, blaise, day(-20), null),
+    mkA(bus, serge, day(-30), day(-16)),
+    mkA(bus, didier, day(-15), null),
+  ]
+  const marks: DayMark[] = [
+    { vehicleId: tri.id, date: day(-6), kind: 'breakdown', amount: null, currency: null, reason: 'Crevaison, réparé le lendemain' },
+    { vehicleId: taxi.id, date: day(-3), kind: 'override', amount: 25000, currency: 'CDF', reason: 'Demi-journée (contrôle routier)' },
+  ]
+  const state: DemoState = {
     ownerName: 'Transports Démo',
     users,
     settings: {
@@ -96,15 +124,33 @@ function seed(): DemoState {
     rates: [{ id: id(), base: 'USD', quote: 'CDF', rate: 2850, source: 'manual', createdAt: nowIso() }],
     vehicles: [taxi, moto, tri, bus, truck],
     drivers: [jean, patrick, blaise, didier, serge],
-    assignments: [
-      mkA(taxi, jean, '2026-01-05', null),
-      mkA(moto, patrick, '2026-02-01', null),
-      mkA(tri, blaise, '2026-03-10', null),
-      mkA(bus, serge, '2026-01-15', '2026-05-31'),
-      mkA(bus, didier, '2026-06-01', null),
-    ],
+    assignments,
+    marks,
+    payments: [],
     sessionUserId: null,
   }
+
+  // Historique de versements : la plupart des jours payés, quelques partiels, quelques oublis (→ dettes)
+  const collector = users[3].id
+  let receipt = 0
+  for (const d of state.drivers) {
+    const days = ledgerOf(state, d.id, day(-31), day(-1)).filter((x) => x.kind === 'due')
+    days.forEach((x, i) => {
+      const k = (i * 7 + d.name.length) % 11
+      if (k === 0) return // oublié
+      const amount = k === 1 ? Math.round(x.expected / 2) : x.expected
+      receipt++
+      state.payments.push({
+        id: id(), receiptNo: receipt, driverId: d.id, vehicleId: x.vehicleId, kind: 'daily', amount, currency: x.currency,
+        method: k % 3 === 0 ? 'mobile_money' : 'cash', reference: k % 3 === 0 ? `MP${x.date.replace(/-/g, '').slice(2)}.${100 + k}` : null,
+        paidOn: k === 2 ? addDays(x.date, 1) : x.date, rate: 2850, note: null, createdAt: `${x.date} 18:00:00`, createdBy: collector,
+        cancelled: false, cancelReason: null,
+        allocations: [{ date: x.date, vehicleId: x.vehicleId, amount }],
+      })
+    })
+  }
+  state.payments.sort((a, b) => a.receiptNo - b.receiptNo)
+  return state
 }
 
 let memory: DemoState | null = null
@@ -186,6 +232,73 @@ async function effectiveRate(s: DemoState): Promise<ExchangeRate | null> {
 function session(s: DemoState) {
   const u = s.users.find((x) => x.id === s.sessionUserId && x.active)
   return { needsSetup: false, user: u ? publicUser(u) : null, ownerName: u ? s.ownerName : null }
+}
+
+// ---------- Grand livre (même calcul que l'API, via src/domain/ledger.ts) ----------
+
+const ledgerVehicle = (v: DemoVehicle): LedgerVehicle => ({
+  id: v.id, name: v.name, serviceDate: v.serviceDate, amounts: v.amounts, restWeekdays: v.restWeekdays,
+})
+const livePayments = (s: DemoState) => s.payments.filter((p) => !p.cancelled)
+
+function ledgerOf(s: DemoState, driverId: string, from: string, to: string) {
+  return driverLedger({
+    assignments: s.assignments.filter((a) => a.driverId === driverId),
+    vehicles: new Map(s.vehicles.map((v) => [v.id, ledgerVehicle(v)])),
+    defaultRest: s.settings.restWeekdays,
+    marks: s.marks,
+    allocations: livePayments(s).filter((p) => p.driverId === driverId).flatMap((p) => p.allocations),
+    from,
+    to,
+  })
+}
+
+function paidOnVehicleDay(s: DemoState, vehicleId: string, date: string): number {
+  return livePayments(s)
+    .flatMap((p) => p.allocations)
+    .filter((a) => a.vehicleId === vehicleId && a.date === date)
+    .reduce((t, a) => t + a.amount, 0)
+}
+
+function paymentDetail(s: DemoState, p: DemoPayment): PaymentDetail {
+  const d = s.drivers.find((x) => x.id === p.driverId)
+  const vName = (vid: string | null) => s.vehicles.find((v) => v.id === vid)?.name ?? null
+  const { createdBy, ...rest } = p
+  return {
+    ...rest,
+    driverName: d?.name ?? null,
+    driverPhone: d?.phone ?? null,
+    vehicleName: vName(p.vehicleId),
+    createdByName: s.users.find((u) => u.id === createdBy)?.name ?? null,
+    ownerName: s.ownerName,
+    allocations: p.allocations.map((a) => {
+      const v = s.vehicles.find((x) => x.id === a.vehicleId)!
+      const cur = expectedFor(ledgerVehicle(v), a.date, s.settings.restWeekdays, s.marks.find((m) => m.vehicleId === v.id && m.date === a.date)).currency
+      return { ...a, vehicleName: v.name, currency: cur }
+    }),
+  }
+}
+const publicPayment = (s: DemoState, p: DemoPayment): Payment => {
+  const { allocations: _a, ownerName: _o, ...rest } = paymentDetail(s, p)
+  return rest
+}
+
+function ledgerPayload(s: DemoState, d: DemoDriver): LedgerPayload {
+  const today = todayIn(s.settings.timezone)
+  const first = s.assignments.filter((a) => a.driverId === d.id).map((a) => a.startDate).sort()[0]
+  const days = first ? ledgerOf(s, d.id, first, addDays(today, 31)) : []
+  return {
+    driver: { id: d.id, name: d.name, phone: d.phone },
+    today,
+    days,
+    summary: summarize(days, today),
+    rate: latest(s),
+    payments: s.payments
+      .filter((p) => p.driverId === d.id)
+      .sort((a, b) => b.paidOn.localeCompare(a.paidOn) || b.receiptNo - a.receiptNo)
+      .slice(0, 30)
+      .map((p) => publicPayment(s, p)),
+  }
 }
 
 // ---------- Parc ----------
@@ -379,49 +492,79 @@ export const demoBackend: Backend = {
     return this.listUsers()
   },
 
-  async dashboard() {
+  async dashboard(): Promise<Dashboard> {
     await pause()
     const s = load()
     const u = me(s)
     if (!can(u.role, 'dashboard.view') && !can(u.role, 'dashboard.own'))
       throw new BackendError(403, "Vous n'avez pas accès au tableau de bord")
-    const rate = await effectiveRate(s)
+    const rateRow = await effectiveRate(s)
+    const rate = rateRow?.rate ?? null
     const date = today(s)
     const base = s.settings.baseCurrency
     const myDriver = u.role === 'driver' ? s.drivers.find((d) => d.userId === u.id) : null
-    let total = 0
     let missingRate = false
-    const lines = s.vehicles
+    const conv = (n: number, c: Currency) => {
+      if (c === base) return n
+      if (!rate) {
+        missingRate = true
+        return 0
+      }
+      return convert(n, c, base, rate)
+    }
+    const lines: DashboardLine[] = s.vehicles
       .filter((v) => v.status === 'active')
-      .map((v) => {
-        const a = s.assignments.find((x) => x.vehicleId === v.id && x.startDate <= date && (x.endDate === null || x.endDate >= date))
-        return { v, a }
-      })
+      .map((v) => ({ v, a: s.assignments.find((x) => x.vehicleId === v.id && x.startDate <= date && (x.endDate === null || x.endDate >= date)) }))
       .filter(({ a }) => u.role !== 'driver' || (a && myDriver && a.driverId === myDriver.id))
-      .sort((x, y) => x.v.name.localeCompare(y.v.name))
       .map(({ v, a }) => {
-        const amount = amountOn(v.amounts, date)
-        const status = dayStatus({ amount, restDays: v.restWeekdays ?? s.settings.restWeekdays, date, hasDriver: !!a })
-        if (status === 'due' && amount) {
-          if (amount.currency !== base && !rate) missingRate = true
-          else total += convert(amount.amount, amount.currency, base, rate?.rate ?? 1)
-        }
+        const e = expectedFor(ledgerVehicle(v), date, s.settings.restWeekdays, s.marks.find((m) => m.vehicleId === v.id && m.date === date))
+        const status = e.kind === 'due' && !a ? 'no_driver' : e.kind
+        const expected = status === 'due' ? e.expected : 0
+        const paid = paidOnVehicleDay(s, v.id, date)
+        const remaining = Math.max(expected - paid, 0)
         return {
-          vehicleId: v.id, vehicleName: v.name, type: v.type, driverName: a?.driverName ?? null, status,
-          amount: amount?.amount ?? 0, currency: amount?.currency ?? base,
-        }
+          vehicleId: v.id, vehicleName: v.name, type: v.type, driverId: a?.driverId ?? null, driverName: a?.driverName ?? null,
+          status, amount: expected || (e.kind === 'due' ? e.expected : v.dailyAmount), paid, remaining,
+          state: expected === 0 ? (paid > 0 ? 'paid' : 'none') : remaining === 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid',
+          currency: e.currency,
+        } satisfies DashboardLine
       })
+      .sort((x, y) => x.vehicleName.localeCompare(y.vehicleName))
+
+    const sum = (f: (l: DashboardLine) => number, only?: (l: DashboardLine) => boolean) =>
+      lines.filter((l) => !only || only(l)).reduce((t, l) => t + conv(f(l), l.currency), 0)
+    const debtors: Debtor[] = []
+    for (const d of s.drivers.filter((x) => !myDriver || x.id === myDriver.id)) {
+      const first = s.assignments.filter((a) => a.driverId === d.id).map((a) => a.startDate).sort()[0]
+      if (!first || first >= date) continue
+      const sm = summarize(ledgerOf(s, d.id, first, addDays(date, -1)), date)
+      const debt = totalIn(sm.arrears, base, rate)
+      if (debt === null) missingRate = true
+      else if (debt > 0) debtors.push({ driverId: d.id, driverName: d.name, debt, unpaidDays: sm.unpaidDays })
+    }
+    debtors.sort((a, b) => b.debt - a.debt)
+    const received = (from: string) =>
+      livePayments(s)
+        .filter((p) => p.paidOn >= from && p.paidOn <= date && (!myDriver || p.driverId === myDriver.id))
+        .reduce((t, p) => t + (p.currency === base ? p.amount : p.rate ? convert(p.amount, p.currency, base, p.rate) : 0), 0)
     const count = (st: string) => lines.filter((l) => l.status === st).length
+    const month = received(date.slice(0, 8) + '01')
     return {
       currency: base,
       date,
-      rate,
-      today: { expected: total, paid: 0, debt: 0 },
-      month: { expected: 0, paid: 0, expenses: 0, profit: 0 },
-      vehicles: { total: lines.length, working: count('due'), resting: count('rest'), noDriver: count('no_driver'), immobilized: 0 },
+      rate: rateRow,
+      today: {
+        expected: sum((l) => l.amount, (l) => l.status === 'due'),
+        paid: sum((l) => l.paid),
+        debt: sum((l) => l.remaining),
+        received: received(date),
+      },
+      month: { expected: 0, paid: month, expenses: 0, profit: month },
+      vehicles: { total: lines.length, working: count('due'), resting: count('rest'), noDriver: count('no_driver'), immobilized: count('breakdown') },
       missingRate,
       lines,
-      totalDebt: 0,
+      totalDebt: debtors.reduce((t, d) => t + d.debt, 0),
+      debtors: debtors.slice(0, 10),
     }
   },
 
@@ -587,6 +730,156 @@ export const demoBackend: Backend = {
     save(s)
     return driverDetail(s, did)
   },
+  async getLedger(did) {
+    await pause()
+    const s = load()
+    const u = me(s)
+    const d = findDriver(s, did)
+    if (!can(u.role, 'drivers.view') && d.userId !== u.id) fail(403, "Vous n'avez pas accès à cette fiche")
+    return ledgerPayload(s, d)
+  },
+  async myLedger() {
+    await pause()
+    const s = load()
+    const u = need(s, 'dashboard.own')
+    const d = s.drivers.find((x) => x.userId === u.id) ?? fail(404, 'Aucune fiche chauffeur liée à ce compte')
+    return ledgerPayload(s, d)
+  },
+  async listPayments(date) {
+    await pause()
+    const s = load()
+    need(s, 'payments.view')
+    return s.payments.filter((p) => p.paidOn === date).sort((a, b) => b.receiptNo - a.receiptNo).map((p) => publicPayment(s, p))
+  },
+  async getPayment(pid) {
+    await pause()
+    const s = load()
+    const u = me(s)
+    const p = s.payments.find((x) => x.id === pid) ?? fail(404, 'Versement introuvable')
+    if (!can(u.role, 'payments.view') && s.drivers.find((d) => d.id === p.driverId)?.userId !== u.id)
+      fail(403, "Vous n'avez pas accès à cette fiche")
+    return paymentDetail(s, p)
+  },
+  async createPayment(input) {
+    await pause()
+    const s = load()
+    const u = need(s, 'payments.create')
+    const existing = s.payments.find((p) => p.id === input.id)
+    if (existing) return paymentDetail(s, existing)
+    if (!Number.isInteger(input.amount) || input.amount <= 0) fail(422, 'Montant invalide')
+    const date = today(s)
+    const paidOn = checkDate(input.paidOn ?? date, 'Date du versement')
+    if (paidOn > date) fail(422, 'La date de réception ne peut pas être dans le futur')
+    const note = input.note?.trim() || null
+    if (input.kind === 'extra' && !note) fail(422, 'Indiquez le motif du versement exceptionnel')
+    const d = findDriver(s, input.driverId)
+    const rate = latest(s)?.rate ?? null
+    let allocations: Allocation[] = []
+    let vehicleId: string | null = null
+    if (input.kind === 'daily') {
+      const chosen = input.days ?? []
+      if (!chosen.length) fail(422, 'Choisissez au moins une journée à payer')
+      const dates = chosen.map((c) => checkDate(c.date, 'Journée'))
+      if (dates.some((x) => x > addDays(date, 31))) fail(422, "On ne peut pas payer plus de 31 jours d'avance")
+      const ledger = ledgerOf(s, d.id, [...dates].sort()[0], [...dates].sort().pop()!)
+      const selected = chosen.map((c) => {
+        const day = ledger.find((x) => x.date === c.date && x.vehicleId === c.vehicleId) ?? fail(422, `Le ${c.date}, ce chauffeur ne conduisait pas cet engin`)
+        if (day.remaining <= 0) fail(422, `La journée du ${c.date} ne doit rien (déjà payée, repos ou panne)`)
+        return day
+      })
+      let r: ReturnType<typeof allocate>
+      try {
+        r = allocate(input.amount, input.currency, rate, selected)
+      } catch {
+        return fail(422, 'Taux de change indisponible : saisissez un taux dans les paramètres')
+      }
+      if (r.leftover > 0)
+        fail(422, `Le montant dépasse ce qui reste dû sur les journées choisies (surplus : ${r.leftover} ${input.currency}). Choisissez une journée de plus, ou enregistrez le surplus comme versement exceptionnel.`)
+      if (r.allocations.length < selected.length) fail(422, 'Le montant ne suffit pas pour toutes les journées choisies : décochez la ou les dernières')
+      allocations = r.allocations
+      vehicleId = allocations[0].vehicleId
+    } else {
+      vehicleId = s.assignments.find((a) => a.driverId === d.id && a.endDate === null)?.vehicleId ?? null
+    }
+    const p: DemoPayment = {
+      id: input.id, receiptNo: Math.max(0, ...s.payments.map((x) => x.receiptNo)) + 1, driverId: d.id, vehicleId,
+      kind: input.kind, amount: input.amount, currency: input.currency, method: input.method,
+      reference: input.reference?.trim() || null, paidOn, rate, note, createdAt: nowIso(), createdBy: u.id,
+      cancelled: false, cancelReason: null, allocations,
+    }
+    s.payments.push(p)
+    save(s)
+    return paymentDetail(s, p)
+  },
+  async cancelPayment(pid, reason) {
+    const s = load()
+    need(s, 'payments.edit')
+    if (!reason.trim()) fail(422, "Le motif d'annulation est obligatoire")
+    const p = s.payments.find((x) => x.id === pid) ?? fail(404, 'Versement introuvable')
+    if (p.cancelled) fail(422, 'Ce versement est déjà annulé')
+    p.cancelled = true
+    p.cancelReason = reason.trim()
+    save(s)
+    return paymentDetail(s, p)
+  },
+  async vehicleDays(vid) {
+    await pause()
+    const s = load()
+    need(s, 'vehicles.view')
+    return vehicleDaysOf(s, vid)
+  },
+  async markDay(vid, input) {
+    const s = load()
+    need(s, 'days.mark')
+    const v = findVehicle(s, vid)
+    const date = checkDate(input.date, 'Date')
+    if (date < v.serviceDate) fail(422, "Cette date précède la mise en service de l'engin")
+    let mark: DayMark | undefined
+    if (input.kind === 'override') {
+      checkAmount(input.amount ?? NaN)
+      if (!input.reason?.trim()) fail(422, 'Indiquez la raison du montant exceptionnel')
+    }
+    if (input.kind !== 'clear') {
+      mark = {
+        vehicleId: vid, date, kind: input.kind, amount: input.kind === 'override' ? input.amount! : null,
+        currency: input.kind === 'override' ? (input.currency ?? v.currency) : null, reason: input.reason?.trim() || null,
+      }
+    }
+    const e = expectedFor(ledgerVehicle(v), date, s.settings.restWeekdays, mark)
+    const paid = paidOnVehicleDay(s, vid, date)
+    if (paid > e.expected)
+      fail(422, `Des versements ont déjà été reçus pour ce jour (${paid} ${e.currency}) : annulez-les d'abord ou choisissez un montant au moins égal`)
+    s.marks = s.marks.filter((m) => !(m.vehicleId === vid && m.date === date))
+    if (mark) s.marks.push(mark)
+    save(s)
+    return vehicleDaysOf(s, vid)
+  },
 }
+
+function vehicleDaysOf(s: DemoState, vid: string): VehicleDays {
+  const v = findVehicle(s, vid)
+  const date = today(s)
+  let from = addDays(date, -30)
+  if (from < v.serviceDate) from = v.serviceDate
+  const days: VehicleDay[] = []
+  for (let d = from; d <= addDays(date, 7); d = addDays(d, 1)) {
+    const a = s.assignments.find((x) => x.vehicleId === vid && x.startDate <= d && (x.endDate === null || x.endDate >= d))
+    const m = s.marks.find((x) => x.vehicleId === vid && x.date === d)
+    const e = expectedFor(ledgerVehicle(v), d, s.settings.restWeekdays, m)
+    const expected = a ? e.expected : 0
+    const paid = paidOnVehicleDay(s, vid, d)
+    const remaining = Math.max(expected - paid, 0)
+    days.push({
+      date: d,
+      driver: a ? { id: a.driverId, name: a.driverName ?? '' } : null,
+      kind: a || e.kind !== 'due' ? e.kind : 'no_driver',
+      expected, currency: e.currency, paid, remaining,
+      state: expected === 0 ? (paid > 0 ? 'paid' : 'none') : remaining === 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid',
+      mark: m ? { kind: m.kind, amount: m.amount, currency: m.currency, reason: m.reason } : null,
+    })
+  }
+  return { vehicleId: vid, today: date, days: days.reverse() }
+}
+
 
 export const DEMO_ACCOUNTS = () => load().users.filter((u) => u.active).map(publicUser)
