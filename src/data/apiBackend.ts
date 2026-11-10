@@ -1,34 +1,27 @@
 import type { Backend } from './backend'
-import { BackendError } from './backend'
+import { offline } from './offlineSetup'
 import type { ReportData } from '../domain/report'
 import type { AuditEntry, CashState, Expense, ExpenseList, Reminder, VehicleBreakdown, VehicleFinance, LedgerPayload, Payment, PaymentDetail, VehicleDays, Driver, DriverDetail, RatesBundle, SessionState, SettingsBundle, User, Vehicle, VehicleDetail } from '../domain/types'
 
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? './api'
-
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  let res: Response
-  try {
-    res = await fetch(`${BASE}${path}`, {
-      method,
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-TransCash': '1' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    })
-  } catch {
-    throw new BackendError(0, 'Pas de connexion au serveur. Vérifiez votre réseau.')
-  }
-  const data = await res.json().catch(() => null)
-  if (!res.ok) throw new BackendError(res.status, data?.error ?? `Erreur ${res.status}`)
-  return data as T
+/** Toutes les requêtes passent par la couche hors connexion (cache des lectures, file des écritures). */
+function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return offline.request<T>(method, path, body)
 }
 
 const users = (r: { users: User[] }) => r.users
 
+/** Après connexion : la copie locale de l'état de session doit refléter l'utilisateur connecté (rechargement hors ligne). */
+async function remember(p: Promise<SessionState>): Promise<SessionState> {
+  const s = await p
+  await offline.prime('/auth/status', s)
+  return s
+}
+
 export const apiBackend: Backend = {
   isDemo: false,
   status: () => call<SessionState>('GET', '/auth/status'),
-  setup: (input) => call<SessionState>('POST', '/auth/setup', input),
-  login: (login, password) => call<SessionState>('POST', '/auth/login', { login, password }),
+  setup: (input) => remember(call<SessionState>('POST', '/auth/setup', input)),
+  login: (login, password) => remember(call<SessionState>('POST', '/auth/login', { login, password })),
   logout: async () => {
     await call('POST', '/auth/logout')
   },
@@ -86,6 +79,7 @@ export const apiBackend: Backend = {
   doneReminder: (id, nextDueDate) => call<{ today: string; reminders: Reminder[] }>('POST', `/reminders/${id}/done`, { nextDueDate }),
   cancelReminder: (id) => call<{ today: string; reminders: Reminder[] }>('POST', `/reminders/${id}/cancel`, {}),
   vehicleFinance: (id) => call<VehicleFinance>('GET', `/vehicles/${id}/finance`),
+  backup: () => call<unknown>('GET', '/backup'),
   reportData: (from, to) => call<ReportData>('GET', `/reports/data?${qs({ from, to })}`),
   auditLog: (p) => call<{ entries: AuditEntry[] }>('GET', `/audit?${qs(p)}`).then((r) => r.entries),
 }
