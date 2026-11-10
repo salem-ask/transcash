@@ -13,10 +13,11 @@ if (!$configFile || !is_file($configFile)) {
 $config = require $configFile;
 $c = $config['db'];
 $pdo = new PDO("mysql:host={$c['host']};dbname={$c['name']};charset=utf8mb4", $c['user'], $c['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-foreach (['audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
+foreach (['assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
     $pdo->exec("DROP TABLE IF EXISTS $t");
 }
 $pdo->exec((string)file_get_contents(__DIR__ . '/../schema.sql'));
+$pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/002_engins_chauffeurs.sql')); // rejouable sans erreur
 
 $port = 8765;
 $root = realpath(__DIR__ . '/..');
@@ -122,12 +123,109 @@ for ($i = 0; $i < 8; $i++) {
 }
 [$s] = call('x', 'POST', '/auth/login', ['login' => 'patron@test.cd', 'password' => 'motdepasse1']);
 check('blocage après trop de tentatives → 429', $s === 429);
+[$s] = call('boss', 'GET', '/settings');
+check('les autres comptes de la même IP ne sont pas bloqués', $s === 200);
 
 echo "Journal et tableau de bord\n";
 $n = (int)$pdo->query("SELECT COUNT(*) FROM audit_log WHERE entity = 'settings' AND action = 'update'")->fetchColumn();
 check('modification des paramètres journalisée', $n === 1, $n);
 [$s, $r] = call('boss', 'GET', '/dashboard');
 check('tableau de bord accessible', $s === 200 && $r['currency'] === 'USD', $r);
+
+
+echo "Engins et chauffeurs\n";
+call('boss', 'PUT', '/settings', ['restWeekdays' => []]); // test indépendant du jour de la semaine
+[$s, $r] = call('boss', 'POST', '/vehicles', ['type' => 'taxi', 'name' => 'Taxi 1', 'plate' => 'kn 1234 ab', 'dailyAmount' => 30000, 'currency' => 'CDF', 'serviceDate' => '2026-01-01']);
+check('création engin (immatriculation en majuscules)', $s === 200 && $r['vehicle']['plate'] === 'KN 1234 AB' && count($r['amounts']) === 1, $r);
+$taxi = $r['vehicle']['id'];
+[$s, $r] = call('boss', 'POST', '/vehicles', ['type' => 'moto', 'name' => 'Doublon', 'plate' => 'KN 1234 AB', 'dailyAmount' => 1000, 'currency' => 'CDF']);
+check('immatriculation en double refusée', $s === 409, $r);
+[$s, $r] = call('boss', 'POST', '/vehicles', ['type' => 'avion', 'name' => 'X', 'dailyAmount' => 1000, 'currency' => 'CDF']);
+check('type inconnu refusé', $s === 422, $r);
+[$s, $r] = call('boss', 'POST', '/vehicles', ['type' => 'moto', 'name' => 'X', 'dailyAmount' => 12.5, 'currency' => 'CDF']);
+check('montant non entier refusé', $s === 422, $r);
+[$s, $r] = call('boss', 'POST', '/vehicles', ['type' => 'moto', 'name' => 'Moto 1', 'dailyAmount' => 1000, 'currency' => 'USD', 'serviceDate' => '2026-01-01']);
+$moto = $r['vehicle']['id'];
+
+[$s, $r] = call('boss', 'POST', '/drivers', ['name' => 'Jean Kabila', 'phone' => '+243 81 111 1111']);
+check('création chauffeur', $s === 200 && $r['driver']['phone'] === '+243811111111', $r);
+$jean = $r['driver']['id'];
+[$s, $r] = call('boss', 'POST', '/drivers', ['name' => 'Autre', 'phone' => '+243811111111']);
+check('téléphone de chauffeur en double refusé', $s === 409, $r);
+[$s, $r] = call('boss', 'POST', '/drivers', ['name' => 'Autre', 'phone' => 'abc']);
+check('téléphone invalide refusé', $s === 422, $r);
+[$s, $r] = call('boss', 'POST', '/drivers', ['name' => 'Paul Mbala', 'phone' => '0812222222']);
+$paul = $r['driver']['id'];
+
+echo "Affectations\n";
+[$s, $r] = call('boss', 'POST', "/vehicles/$taxi/assign", ['driverId' => $jean, 'startDate' => '2026-02-01']);
+check('affectation Jean → Taxi 1', $s === 200 && $r['vehicle']['currentDriver']['id'] === $jean, $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$moto/assign", ['driverId' => $jean, 'startDate' => '2026-02-05']);
+check('un chauffeur ne conduit qu\'un engin à la fois', $s === 409, $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$taxi/assign", ['driverId' => $paul, 'startDate' => '2026-01-20']);
+check('nouveau chauffeur avant le début de l\'actuel refusé', $s === 422, $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$taxi/assign", ['driverId' => $paul, 'startDate' => '2026-03-01']);
+$hist = $r['assignments'] ?? [];
+check('relève : Jean termine la veille, Paul commence', $s === 200 && $r['vehicle']['currentDriver']['id'] === $paul
+    && count($hist) === 2 && $hist[1]['endDate'] === '2026-02-28', $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$moto/assign", ['driverId' => $jean, 'startDate' => '2026-02-15']);
+check('chevauchement avec une ancienne affectation refusé', $s === 422, $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$moto/assign", ['driverId' => $jean, 'startDate' => '2026-03-01']);
+check('Jean passe sur Moto 1', $s === 200, $r);
+[$s, $r] = call('boss', 'GET', "/drivers/$jean");
+check('historique du chauffeur (2 engins)', $s === 200 && count($r['assignments']) === 2 && $r['driver']['currentVehicle']['id'] === $moto, $r);
+
+echo "Montant journalier\n";
+[$s, $r] = call('boss', 'PUT', "/vehicles/$taxi", ['name' => 'Taxi 1', 'type' => 'taxi', 'plate' => 'KN 1234 AB', 'dailyAmount' => 35000, 'amountFrom' => '2026-06-01']);
+check('nouveau montant daté, ancien conservé', $s === 200 && count($r['amounts']) === 2 && $r['amounts'][0]['effectiveFrom'] === '2026-06-01' && $r['amounts'][1]['amount'] === 30000, $r);
+[$s, $r] = call('boss', 'PUT', "/vehicles/$taxi", ['name' => 'Taxi 1', 'type' => 'taxi', 'plate' => 'KN 1234 AB', 'dailyAmount' => 36000, 'amountFrom' => '2026-06-01']);
+check('même date : le montant prévu est remplacé', $s === 200 && count($r['amounts']) === 2 && $r['amounts'][0]['amount'] === 36000, $r);
+
+echo "Tableau de bord\n";
+[$s, $r] = call('boss', 'GET', '/dashboard');
+// 36 000 FC / 2 900 = 12,41 $ → 1241 cents ; + 10,00 $ de la moto = 2241 cents (devise principale USD)
+check('attendu du jour converti dans la devise principale', $s === 200 && $r['today']['expected'] === 2241 && $r['vehicles']['working'] === 2, $r);
+
+echo "Droits et accès chauffeur\n";
+[$s] = call('compta', 'POST', '/vehicles', ['type' => 'moto', 'name' => 'X', 'dailyAmount' => 1000, 'currency' => 'CDF']);
+check('comptable ne peut pas créer d\'engin', $s === 403);
+[$s, $r] = call('compta', 'GET', '/vehicles');
+check('comptable voit les engins', $s === 200 && count($r['vehicles']) === 2, $r);
+[$s, $r] = call('boss', 'POST', "/drivers/$paul/account", ['password' => 'chauffeur1']);
+check('accès chauffeur créé (identifiant = téléphone)', $s === 200 && $r['driver']['hasAccount'] === true, $r);
+[$s, $r] = call('paul', 'POST', '/auth/login', ['login' => '0812222222', 'password' => 'chauffeur1']);
+check('connexion chauffeur', $s === 200 && $r['user']['role'] === 'driver', $r);
+[$s, $r] = call('paul', 'GET', '/dashboard');
+check('le chauffeur ne voit que son engin', $s === 200 && count($r['lines']) === 1 && $r['lines'][0]['vehicleId'] === $taxi, $r);
+[$s] = call('paul', 'GET', '/vehicles');
+check('le chauffeur ne voit pas la liste des engins', $s === 403);
+
+echo "Fin d'affectation et retrait\n";
+[$s, $r] = call('boss', 'POST', "/vehicles/$moto/unassign", ['endDate' => '2026-02-01']);
+check('fin avant le début refusée', $s === 422, $r);
+[$s, $r] = call('boss', 'PUT', "/drivers/$paul", ['name' => 'Paul Mbala', 'phone' => '0812222222', 'active' => false]);
+check('désactivation d\'un chauffeur en service refusée', $s === 422, $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$taxi/status", ['status' => 'retired', 'date' => '2026-07-01']);
+check('retrait du parc termine l\'affectation', $s === 200 && $r['vehicle']['status'] === 'retired' && $r['vehicle']['currentDriver'] === null && $r['assignments'][0]['endDate'] === '2026-07-01', $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$taxi/assign", ['driverId' => $paul, 'startDate' => '2026-07-05']);
+check('affectation sur un engin retiré refusée', $s === 422, $r);
+[$s, $r] = call('boss', 'PUT', "/drivers/$paul", ['name' => 'Paul Mbala', 'phone' => '0812222222', 'active' => false]);
+check('désactivation du chauffeur libre (et de son accès)', $s === 200 && $r['driver']['active'] === false, $r);
+[$s] = call('paul', 'GET', '/dashboard');
+check('accès du chauffeur désactivé coupé', $s === 401);
+
+echo "Séparation des propriétaires\n";
+$o2 = '00000000-0000-4000-8000-000000000002';
+$pdo->exec("INSERT INTO owners (id, name) VALUES ('$o2', 'Autre entreprise')");
+$pdo->prepare("INSERT INTO users (id, owner_id, name, login, password_hash, role) VALUES (?, ?, 'Autre', 'autre@x.cd', ?, 'super_admin')")
+    ->execute(['00000000-0000-4000-8000-0000000000aa', $o2, password_hash('motdepasse9', PASSWORD_DEFAULT)]);
+call('autre', 'POST', '/auth/login', ['login' => 'autre@x.cd', 'password' => 'motdepasse9']);
+[$s, $r] = call('autre', 'GET', '/vehicles');
+check('un autre propriétaire ne voit aucun engin', $s === 200 && $r['vehicles'] === [], $r);
+[$s] = call('autre', 'GET', "/vehicles/$moto");
+check('ni par accès direct', $s === 404);
+[$s] = call('autre', 'POST', "/vehicles/$moto/unassign", []);
+check('ni en écriture', $s === 404);
 
 echo $failures === 0 ? "\nTous les tests API passent.\n" : "\n$failures test(s) en échec.\n";
 exit($failures === 0 ? 0 : 1);

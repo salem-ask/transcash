@@ -7,9 +7,12 @@ declare(strict_types=1);
 require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/auth.php';
 require __DIR__ . '/lib/rates.php';
+require __DIR__ . '/lib/fleet.php';
 require __DIR__ . '/routes/auth.php';
 require __DIR__ . '/routes/settings.php';
 require __DIR__ . '/routes/users.php';
+require __DIR__ . '/routes/vehicles.php';
+require __DIR__ . '/routes/drivers.php';
 require __DIR__ . '/routes/dashboard.php';
 
 header('X-Content-Type-Options: nosniff');
@@ -36,6 +39,18 @@ $routes = [
     ['GET', '/users', 'users_list'],
     ['POST', '/users', 'users_create'],
     ['PUT', '/users/{id}', 'users_update'],
+    ['GET', '/vehicles', 'vehicles_list'],
+    ['POST', '/vehicles', 'vehicles_create'],
+    ['GET', '/vehicles/{id}', 'vehicles_get'],
+    ['PUT', '/vehicles/{id}', 'vehicles_update'],
+    ['POST', '/vehicles/{id}/status', 'vehicles_set_status'],
+    ['POST', '/vehicles/{id}/assign', 'vehicles_assign'],
+    ['POST', '/vehicles/{id}/unassign', 'vehicles_unassign'],
+    ['GET', '/drivers', 'drivers_list'],
+    ['POST', '/drivers', 'drivers_create'],
+    ['GET', '/drivers/{id}', 'drivers_get'],
+    ['PUT', '/drivers/{id}', 'drivers_update'],
+    ['POST', '/drivers/{id}/account', 'drivers_create_account'],
     ['GET', '/dashboard', 'dashboard_get'],
 ];
 
