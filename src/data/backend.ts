@@ -107,6 +107,9 @@ export interface Backend {
 
   // Phase 5 : rapports (données brutes ; le calcul est fait par src/domain/report.ts)
   reportData(from: string, to: string): Promise<ReportData>
+
+  // Phase 6 : sauvegarde complète (super admin)
+  backup(): Promise<unknown>
 }
 
 /** Erreur lisible par l'utilisateur, avec le code HTTP correspondant. */

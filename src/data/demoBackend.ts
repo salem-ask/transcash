@@ -1130,6 +1130,15 @@ export const demoBackend: Backend = {
     const current = breakdownsOf(s, vid).find((b) => !b.cancelled && b.startDate <= date && (b.endDate === null || b.endDate >= date)) ?? null
     return { from, to: date, currency: base, revenue, expenses, profit: revenue - expenses, currentBreakdown: current }
   },
+  async backup() {
+    const s = load()
+    need(s, 'backup.download')
+    const { users, sessionUserId: _s, ...rest } = s
+    return {
+      format: 'transcash-backup', version: 1, exportedAt: nowIso(), demo: true,
+      tables: { ...rest, users: users.map(({ password: _p, ...u }) => u) },
+    }
+  },
   async reportData(from, to) {
     await pause()
     const s = load()

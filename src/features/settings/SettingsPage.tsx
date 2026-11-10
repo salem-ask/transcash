@@ -20,7 +20,7 @@ export function SettingsPage() {
 
   const [rates, setRates] = useState<RatesBundle | null>(null)
   const [manual, setManual] = useState('')
-  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
@@ -59,6 +59,19 @@ export function SettingsPage() {
       syncRates(await backend.addManualRate(value))
       setManual('')
     }, 'Taux manuel enregistré')
+  }
+
+  async function downloadBackup() {
+    const data = await backend.backup()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `transcash-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
 
   const toggleRest = (d: number) =>
@@ -185,6 +198,18 @@ export function SettingsPage() {
           )}
         </div>
       </Card>
+
+      {can(role, 'backup.download') && (
+        <Card title="Sauvegarde">
+          <p className="text-sm text-ink-soft">
+            Télécharge toutes les données de l'entreprise (engins, chauffeurs, versements, dépenses, caisse, journal…) dans un fichier à garder en lieu sûr.
+            Les mots de passe ne sont pas inclus. Hostinger fait aussi ses propres sauvegardes automatiques.
+          </p>
+          <Button variant="secondary" className="mt-3 w-full" busy={busy === 'backup'} disabled={busy !== null} onClick={() => run('backup', downloadBackup, 'Sauvegarde téléchargée')}>
+            Télécharger une sauvegarde
+          </Button>
+        </Card>
+      )}
 
       <Card title="Général">
         <div className="space-y-4">
