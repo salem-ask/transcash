@@ -80,6 +80,12 @@ function expense_detail(string $ownerId, string $id): array
     return public_expense($e);
 }
 
+function expenses_get(string $id): array
+{
+    $u = require_permission('expenses.manage');
+    return expense_detail($u['owner_id'], $id);
+}
+
 function expenses_list(): array
 {
     $u = require_permission('expenses.manage');
