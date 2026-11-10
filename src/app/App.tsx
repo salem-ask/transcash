@@ -8,6 +8,13 @@ import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { UsersPage } from '../features/users/UsersPage'
 import { AccountPage } from '../features/account/AccountPage'
+import { MenuPage } from '../features/account/MenuPage'
+import { VehiclesPage } from '../features/vehicles/VehiclesPage'
+import { VehicleFormPage } from '../features/vehicles/VehicleFormPage'
+import { VehicleDetailPage } from '../features/vehicles/VehicleDetailPage'
+import { DriversPage } from '../features/drivers/DriversPage'
+import { DriverFormPage } from '../features/drivers/DriverFormPage'
+import { DriverDetailPage } from '../features/drivers/DriverDetailPage'
 import { can, type Permission } from '../domain/permissions'
 import type { ReactNode } from 'react'
 
@@ -38,7 +45,16 @@ function Root() {
         <Route index element={<DashboardPage />} />
         <Route path="parametres" element={<Guard perm="settings.view"><SettingsPage /></Guard>} />
         <Route path="utilisateurs" element={<Guard perm="users.view"><UsersPage /></Guard>} />
+        <Route path="engins" element={<Guard perm="vehicles.view"><VehiclesPage /></Guard>} />
+        <Route path="engins/nouveau" element={<Guard perm="vehicles.manage"><VehicleFormPage /></Guard>} />
+        <Route path="engins/:id" element={<Guard perm="vehicles.view"><VehicleDetailPage /></Guard>} />
+        <Route path="engins/:id/modifier" element={<Guard perm="vehicles.manage"><VehicleFormPage /></Guard>} />
+        <Route path="chauffeurs" element={<Guard perm="drivers.view"><DriversPage /></Guard>} />
+        <Route path="chauffeurs/nouveau" element={<Guard perm="drivers.manage"><DriverFormPage /></Guard>} />
+        <Route path="chauffeurs/:id" element={<Guard perm="drivers.view"><DriverDetailPage /></Guard>} />
+        <Route path="chauffeurs/:id/modifier" element={<Guard perm="drivers.manage"><DriverFormPage /></Guard>} />
         <Route path="compte" element={<AccountPage />} />
+        <Route path="menu" element={<MenuPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
