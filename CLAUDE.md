@@ -149,19 +149,20 @@ transcash/
 │   ├── index.php           # routeur unique
 │   ├── .htaccess           # réécriture + blocage des fichiers sensibles
 │   ├── config.example.php  # modèle ; config.php (secrets) n'est JAMAIS commité
-│   ├── schema.sql          # schéma MySQL à importer dans phpMyAdmin
+│   ├── schema.sql          # schéma MySQL COMPLET (installation neuve)
+│   ├── migrations/         # changements par phase pour une base déjà installée
 │   ├── permissions.json    # droits par rôle (partagé avec l'interface)
-│   ├── lib/                # core (BDD, JSON, journal), auth, taux
-│   ├── routes/             # auth, settings (+ taux), users, dashboard
+│   ├── lib/                # core (BDD, JSON, journal), auth, taux, fleet (dates, montants)
+│   ├── routes/             # auth, settings (+ taux), users, vehicles, drivers, dashboard
 │   └── tests/api_test.php  # test d'intégration (base de TEST vidée)
 ├── scripts/                # copy-api.mjs, preview-artifact.mjs
 └── src/
     ├── app/                # App (routes), Layout (navigation), session (contexte)
     ├── components/         # ui.tsx (Button, Field, Card…), Money.tsx
     ├── data/               # backend.ts (contrat), apiBackend.ts, demoBackend.ts
-    ├── domain/             # règles métier pures + tests (money, permissions, types)
-    ├── features/           # un dossier par module : auth, dashboard, settings, users, account…
-    └── lib/                # format (dates, jours)
+    ├── domain/             # règles métier pures + tests (money, fleet, permissions, types)
+    ├── features/           # auth, dashboard, vehicles, drivers, settings, users, account (+ menu)
+    └── lib/                # format (dates), useLoad (chargement), search (recherche sans accents)
 ```
 
 ---
@@ -230,10 +231,16 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Tableau de bord (squelette : chiffres à zéro jusqu'aux phases 2-3, taux du jour)
 - [ ] Vue « chauffeur » détaillée (sera remplie en phase 3 avec ses versements et dettes)
 
-### Phase 2 — Engins et chauffeurs
-- [ ] Engins (CRUD, montant journalier attendu, statut)
-- [ ] Chauffeurs (CRUD)
-- [ ] Affectation chauffeur ↔ engin + historique
+### Phase 2 — Engins et chauffeurs ✅
+- [x] Engins : type, nom, immatriculation (unique), modèle, mise en service, notes
+- [x] Montant journalier attendu en CDF ou USD, **historisé par date** (« à partir du… »)
+- [x] Jours de repos propres à un engin (sinon ceux des paramètres)
+- [x] Retrait du parc / remise en service (historique conservé)
+- [x] Chauffeurs : fiche (téléphone unique, pièce d'identité, permis, adresse), désactivation
+- [x] Accès de consultation du chauffeur (identifiant = téléphone)
+- [x] Affectation chauffeur ↔ engin datée, relève (l'ancien termine la veille), historique des deux côtés
+- [x] Tableau de bord : attendu du jour (converti), état du parc (doivent verser / repos / sans chauffeur)
+- [x] Navigation téléphone : Accueil, Engins, Chauffeurs, Menu
 
 ### Phase 3 — Versements et dettes
 - [ ] Saisie de versement (complet, partiel, retard, anticipé, exceptionnel)
@@ -264,9 +271,9 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [ ] Protection contre les suppressions accidentelles
 
 ### Questions ouvertes
-- **Droits par rôle** (`api/permissions.json`) : proposition à valider par le propriétaire. Points notables :
-  le comptable peut saisir un taux manuel mais pas modifier les paramètres ; le gestionnaire gère engins,
-  chauffeurs et saisit les versements mais ne peut pas les corriger ; seuls admin / super admin gèrent l'équipe.
+- Règles de la phase 2 appliquées sans validation explicite (à confirmer) :
+  un chauffeur ne conduit **qu'un engin à la fois** ; un engin **sans chauffeur** ne doit rien ce jour-là
+  (ni dette) ; le retrait du parc termine l'affectation ; un chauffeur en service ne peut pas être désactivé.
 - Super admin : aujourd'hui = rôle le plus élevé **dans** une entreprise. Faut-il plus tard un
   super admin « plateforme » qui voit toutes les entreprises ?
 
@@ -296,6 +303,13 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | Mode démo (données dans le navigateur) pour la prévisualisation | Montrer l'application sans serveur |
 | 2026-11-10 | Routage par `#` (HashRouter) | Aucune règle de réécriture nécessaire sur Hostinger |
 | 2026-11-10 | Pas de fenêtres `prompt()`/`confirm()` : confirmations intégrées à l'écran | Plus pratique sur téléphone ; bloquées dans la prévisualisation |
+| 2026-11-10 | Droits par rôle de `api/permissions.json` validés | Accord du propriétaire (« Oui, phase 2 ») |
+| 2026-11-10 | Montant journalier historisé (`vehicle_amounts`, date d'effet) | Changer le tarif ne doit jamais modifier les dettes passées |
+| 2026-11-10 | Affectations datées (`assignments`), relève = l'ancien termine la veille, aucun chevauchement | Savoir qui devait verser chaque jour |
+| 2026-11-10 | Un chauffeur ne conduit qu'un engin à la fois | Cohérent avec « un chauffeur actif par engin » ; à confirmer |
+| 2026-11-10 | Pas de suppression d'engin/chauffeur : retrait du parc / désactivation | Conserver l'historique, éviter les suppressions accidentelles |
+| 2026-11-10 | Blocage de connexion par identifiant (8) et par IP (50) séparés | Les IP mobiles sont partagées en RDC |
+| 2026-11-10 | Migrations SQL numérotées (`api/migrations/`) en plus de `schema.sql` | Mettre à jour une base déjà installée sur Hostinger |
 
 ---
 

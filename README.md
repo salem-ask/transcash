@@ -42,4 +42,7 @@ npm run lint
 6. **Premier lancement** — ouvrir le site : l'écran « Créons votre compte principal » apparaît
    une seule fois pour créer l'entreprise et le compte super administrateur.
 
+**Mise à jour d'une installation existante :** importer dans phpMyAdmin, dans l'ordre, les fichiers de
+`api/migrations/` qui n'ont pas encore été appliqués (voir `api/migrations/README.md`), puis renvoyer `dist/`.
+
 Vérification rapide : `https://votre-domaine/api/health` doit répondre `{"ok":true}`.
