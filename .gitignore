@@ -28,3 +28,6 @@ api/config.php
 .local/
 # Prévisualisation générée (publiée comme artefact, pas versionnée)
 preview/
+
+# Paquet de déploiement (contient le mot de passe de la base) — jamais versionné
+deploy/
