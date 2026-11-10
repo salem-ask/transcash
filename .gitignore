@@ -26,3 +26,5 @@ dist-ssr
 # Configuration locale de l'API (contient le mot de passe MySQL)
 api/config.php
 .local/
+# Prévisualisation générée (publiée comme artefact, pas versionnée)
+preview/
