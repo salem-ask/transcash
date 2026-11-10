@@ -1,7 +1,7 @@
 # CLAUDE.md — Mémoire du projet TransCash
 
 > À lire au début de chaque session. À mettre à jour après chaque fonctionnalité terminée
-> (« État d'avancement » + « Journal des décisions »), puis commit et push.
+> (« État d'avancement » + « Journal des décisions »), puis commit. Push à la fin de chaque phase.
 
 ---
 
@@ -93,10 +93,7 @@ utilisable avec une connexion faible ou absente.
 
 ---
 
-## 5. Stack technique — ⚠️ PROPOSITION, À VALIDER
-
-> Aucun code n'existe encore. La stack ci-dessous est une **proposition** ; elle ne sera adoptée
-> qu'après confirmation du propriétaire (puis consignée dans le Journal des décisions).
+## 5. Stack technique (validée le 2026-11-10)
 
 | Besoin | Choix proposé | Pourquoi |
 |--------|---------------|----------|
@@ -108,6 +105,8 @@ utilisable avec une connexion faible ou absente.
 | Exports | jsPDF / SheetJS (xlsx) | PDF et Excel côté client |
 | Reçus | Liens `wa.me` / `sms:` pré-remplis | Aucun coût d'API au départ |
 | Tests | **Vitest** (unitaires, règles de calcul) + **Playwright** (parcours) | |
+| Hébergement de l'application | **Hostinger** (fichiers statiques du build `dist/`) | Choix du propriétaire ; une PWA est un site statique, compatible avec l'hébergement mutualisé |
+| Hébergement des données | **Supabase** (service en ligne, séparé d'Hostinger) | Hostinger mutualisé ne peut pas faire tourner PostgreSQL + Auth + RLS |
 
 **Principes de synchronisation (sans perte ni doublon) :**
 - chaque enregistrement a un **UUID généré sur l'appareil** → l'envoi est idempotent (upsert) ;
@@ -115,8 +114,14 @@ utilisable avec une connexion faible ou absente.
 - file d'attente locale des opérations, rejouée à la reconnexion ;
 - opérations clôturées = verrouillées côté serveur.
 
-**Montants :** stockés en **entiers** (plus petite unité de la devise), jamais en nombre à virgule.
-Devise configurable dans les paramètres.
+**Montants et devises :**
+- montants stockés en **entiers** (plus petite unité de la devise : franc pour le CDF, cent pour l'USD),
+  jamais en nombre à virgule ;
+- devise principale **CDF (franc congolais)**, avec **équivalence en USD** affichable ; l'administrateur
+  peut aussi choisir l'inverse (USD principal, équivalence en CDF) dans les paramètres ;
+- le **taux de change** est saisi par l'administrateur (règles de détail en attente de validation, voir
+  « Questions ouvertes ») ;
+- d'autres devises seront ajoutées plus tard : le modèle porte un code devise (ISO 4217) sur chaque montant.
 
 ---
 
@@ -186,6 +191,10 @@ npm run test:e2e     # tests de bout en bout (Playwright)
 npm run lint         # vérification du code
 ```
 
+**Déploiement (Hostinger) :** `npm run build`, puis envoyer le contenu de `dist/` dans `public_html/`
+(gestionnaire de fichiers, FTP ou déploiement Git d'Hostinger). Prévoir une règle `.htaccess` qui renvoie
+toutes les routes vers `index.html`.
+
 ---
 
 ## 9. État d'avancement
@@ -196,14 +205,14 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Dépôt git initialisé, remote GitHub configuré
 - [~] CLAUDE.md (mémoire du projet)
 - [x] .gitignore
-- [ ] Validation de la stack technique
+- [x] Validation de la stack technique
 - [ ] Initialisation du projet (Vite + React + TS + PWA)
 - [ ] Schéma de base de données multi-tenant + RLS
 
 ### Phase 1 — Authentification, tableau de bord, paramètres
 - [ ] Connexion / déconnexion
 - [ ] Profils et rôles (super admin, admin, comptable, gestionnaire, chauffeur)
-- [ ] Paramètres (devise, fuseau horaire, jours de repos par défaut)
+- [ ] Paramètres (devise principale CDF/USD, équivalence, taux de change, fuseau horaire, jours de repos par défaut)
 - [ ] Tableau de bord (squelette)
 
 ### Phase 2 — Engins et chauffeurs
@@ -239,6 +248,10 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [ ] Sauvegardes
 - [ ] Protection contre les suppressions accidentelles
 
+### Questions ouvertes
+- Taux de change CDF/USD : un taux unique modifiable, ou un taux du jour enregistré avec chaque opération ?
+- Un versement peut-il être encaissé dans l'une ou l'autre devise (ex. chauffeur qui paie en USD un montant attendu en CDF) ?
+
 ---
 
 ## 10. Journal des décisions
@@ -253,6 +266,10 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | Aucun versement exigé pendant une immobilisation | Le chauffeur ne peut pas travailler |
 | 2026-11-10 | Offline first, synchronisation sans perte ni doublon | Connexion souvent instable sur le terrain |
 | 2026-11-10 | Montants stockés en entiers | Éviter les erreurs d'arrondi |
+| 2026-11-10 | Stack validée : React + TypeScript + Vite (PWA), Tailwind, Dexie, Supabase | Une seule base de code installable sur Android et ordinateur, offline possible, multi-tenant par RLS |
+| 2026-11-10 | Application déployée sur Hostinger ; données sur Supabase | Choix du propriétaire pour l'hébergement ; Supabase pour la base et l'authentification |
+| 2026-11-10 | Devise principale CDF avec équivalence USD (ou l'inverse, au choix de l'administrateur) ; autres devises plus tard | Réalité des paiements en RDC |
+| 2026-11-10 | Push sur GitHub à la fin de chaque phase (commits petits entre-temps) | Demande du propriétaire |
 
 ---
 
@@ -260,7 +277,7 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 
 1. Lire ce fichier au début de chaque session.
 2. Après chaque fonctionnalité terminée : mettre à jour « État d'avancement » et
-   « Journal des décisions », puis commit et push.
+   « Journal des décisions », puis commit. **Push à la fin de chaque phase.**
 3. Ne jamais stocker de secrets ou mots de passe dans le dépôt.
 4. **Demander confirmation** au propriétaire avant toute décision qui change l'architecture
    ou une règle métier.
