@@ -85,11 +85,72 @@ function body(): array
 
 function json_response(mixed $data, int $status = 200): never
 {
+    $body = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    idempotency_store($status, (string)$body);
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    echo $body;
     exit;
+}
+
+/**
+ * Anti-doublon générique (hors connexion) : toute écriture peut porter l'en-tête X-Idempotency-Key (UUID).
+ * Si la même clé revient (renvoi après une coupure réseau), on renvoie la réponse enregistrée la première fois
+ * au lieu de refaire l'opération.
+ */
+function idempotency_key(): ?string
+{
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $key = strtolower((string)($_SERVER['HTTP_X_IDEMPOTENCY_KEY'] ?? ''));
+    if ($method === 'GET' || !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $key)) {
+        return null;
+    }
+    return $key;
+}
+
+/** Si cette écriture a déjà été traitée, renvoie la même réponse et s'arrête. */
+function idempotency_replay(): void
+{
+    $key = idempotency_key();
+    if ($key === null) {
+        return;
+    }
+    $row = query('SELECT user_id, status, response FROM idempotency_keys WHERE id = ?', [$key])->fetch();
+    if (!$row) {
+        return;
+    }
+    $userId = $_SESSION['user_id'] ?? null;
+    if ($row['user_id'] !== null && $row['user_id'] !== $userId) {
+        throw new HttpError(409, 'Clé de requête déjà utilisée');
+    }
+    $GLOBALS['idempotency_replayed'] = true;
+    http_response_code((int)$row['status']);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    header('X-Idempotent-Replay: 1');
+    echo $row['response'];
+    exit;
+}
+
+/** Enregistre la réponse d'une écriture (sauf erreurs serveur et « non connecté », qui doivent être retentées). */
+function idempotency_store(int $status, string $body): void
+{
+    $key = idempotency_key();
+    if ($key === null || $status >= 500 || $status === 401 || !empty($GLOBALS['idempotency_replayed'])) {
+        return;
+    }
+    try {
+        query(
+            'INSERT IGNORE INTO idempotency_keys (id, user_id, method, path, status, response, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [$key, $_SESSION['user_id'] ?? null, $_SERVER['REQUEST_METHOD'] ?? '', substr((string)($_SERVER['REQUEST_URI'] ?? ''), 0, 255), $status, $body, now_utc()]
+        );
+        if (random_int(1, 200) === 1) {
+            query('DELETE FROM idempotency_keys WHERE created_at < ?', [gmdate('Y-m-d H:i:s', time() - 60 * 86400)]);
+        }
+    } catch (Throwable $e) {
+        error_log('[TransCash] idempotency: ' . $e->getMessage());
+    }
 }
 
 /** Valide qu'un champ texte est présent et non vide. */

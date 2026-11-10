@@ -13,13 +13,14 @@ if (!$configFile || !is_file($configFile)) {
 $config = require $configFile;
 $c = $config['db'];
 $pdo = new PDO("mysql:host={$c['host']};dbname={$c['name']};charset=utf8mb4", $c['user'], $c['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-foreach (['schema_state', 'reminders', 'cash_movements', 'expenses', 'breakdowns', 'payment_allocations', 'payments', 'day_marks', 'assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
+foreach (['idempotency_keys', 'schema_state', 'reminders', 'cash_movements', 'expenses', 'breakdowns', 'payment_allocations', 'payments', 'day_marks', 'assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
     $pdo->exec("DROP TABLE IF EXISTS $t");
 }
 $pdo->exec((string)file_get_contents(__DIR__ . '/../schema.sql'));
 $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/002_engins_chauffeurs.sql')); // rejouable sans erreur
 $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/003_versements_dettes.sql'));
 $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/004_depenses_caisse_pannes.sql'));
+$pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/005_hors_connexion.sql'));
 
 $port = 8765;
 $root = realpath(__DIR__ . '/..');
@@ -29,7 +30,7 @@ register_shutdown_function(fn() => posix_kill($pid, SIGTERM) || exec("kill $pid"
 usleep(400_000);
 
 $jars = [];
-function call(string $who, string $method, string $path, ?array $body = null, bool $csrf = true): array
+function call(string $who, string $method, string $path, ?array $body = null, bool $csrf = true, array $extra = []): array
 {
     global $port, $jars;
     $jars[$who] ??= tempnam(sys_get_temp_dir(), 'tc');
@@ -38,6 +39,7 @@ function call(string $who, string $method, string $path, ?array $body = null, bo
     if ($csrf) {
         $headers[] = 'X-TransCash: 1';
     }
+    $headers = array_merge($headers, $extra);
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST => $method,
         CURLOPT_RETURNTRANSFER => true,
@@ -440,6 +442,23 @@ check('le gestionnaire ne voit pas les rapports', $s === 403);
 check('période inversée refusée', $s === 422, $r);
 [$s, $r] = call('autre', 'GET', '/reports/data');
 check('autre propriétaire : aucun engin', $s === 200 && $r['vehicles'] === [] && $r['days'] === [], $r);
+
+echo "Hors connexion et sauvegarde\n";
+$key = $uuid();
+$before = (int)$pdo->query('SELECT COUNT(*) FROM drivers')->fetchColumn();
+[$s1, $r1] = call('boss', 'POST', '/drivers', ['name' => 'Hors Ligne', 'phone' => '0819999999'], true, ["X-Idempotency-Key: $key"]);
+[$s2, $r2] = call('boss', 'POST', '/drivers', ['name' => 'Hors Ligne', 'phone' => '0819999999'], true, ["X-Idempotency-Key: $key"]);
+$after = (int)$pdo->query('SELECT COUNT(*) FROM drivers')->fetchColumn();
+check('écriture renvoyée deux fois (même clé) : une seule création, même réponse', $s1 === 200 && $s2 === 200 && $after === $before + 1 && $r1 == $r2, [$s1, $s2, $before, $after]);
+[$s3, $r3] = call('boss', 'POST', '/drivers', ['name' => 'Hors Ligne', 'phone' => '0819999999'], true, ["X-Idempotency-Key: " . $uuid()]);
+check('nouvelle clé : la règle métier s\'applique (doublon refusé)', $s3 === 409, $r3);
+[$s4] = call('compta', 'POST', '/drivers', ['name' => 'X', 'phone' => '0818888888'], true, ["X-Idempotency-Key: $key"]);
+check('clé d\'un autre utilisateur refusée', $s4 === 409);
+[$s, $r] = call('boss', 'GET', '/backup');
+check('sauvegarde complète (super admin), sans mots de passe', $s === 200 && $r['format'] === 'transcash-backup' && count($r['tables']['payments']) > 0
+    && !str_contains(json_encode($r), 'password_hash'), array_keys($r));
+[$s] = call('compta', 'GET', '/backup');
+check('sauvegarde réservée au super admin', $s === 403);
 
 echo $failures === 0 ? "\nTous les tests API passent.\n" : "\n$failures test(s) en échec.\n";
 exit($failures === 0 ? 0 : 1);

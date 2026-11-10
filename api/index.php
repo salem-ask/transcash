@@ -17,6 +17,7 @@ require __DIR__ . '/routes/drivers.php';
 require __DIR__ . '/routes/payments.php';
 require __DIR__ . '/routes/finance.php';
 require __DIR__ . '/routes/reports.php';
+require __DIR__ . '/routes/backup.php';
 require __DIR__ . '/routes/dashboard.php';
 
 header('X-Content-Type-Options: nosniff');
@@ -84,11 +85,14 @@ $routes = [
     ['POST', '/reminders/{id}/cancel', 'reminders_cancel'],
     ['GET', '/audit', 'audit_list'],
     ['GET', '/reports/data', 'reports_data'],
+    ['GET', '/backup', 'backup_get'],
     ['GET', '/dashboard', 'dashboard_get'],
 ];
 
 try {
     ensure_schema();
+    start_session();
+    idempotency_replay();
     // Protection CSRF : toute écriture doit porter l'en-tête X-TransCash (impossible à poser depuis un autre site).
     if ($method !== 'GET' && ($_SERVER['HTTP_X_TRANSCASH'] ?? '') !== '1') {
         throw new HttpError(403, 'Requête refusée');

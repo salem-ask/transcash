@@ -319,3 +319,15 @@ CREATE TABLE IF NOT EXISTS reminders (
   KEY idx_reminders_owner (owner_id, due_date),
   CONSTRAINT fk_reminders_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============ Phase 6 : anti-doublon (hors connexion) ============
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  id CHAR(36) NOT NULL PRIMARY KEY,           -- clé X-Idempotency-Key envoyée par l'appareil
+  user_id CHAR(36) NULL,
+  method VARCHAR(10) NOT NULL,
+  path VARCHAR(255) NOT NULL,
+  status SMALLINT NOT NULL,
+  response MEDIUMTEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  KEY idx_idem_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

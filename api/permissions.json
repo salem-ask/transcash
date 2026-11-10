@@ -114,6 +114,9 @@
     "audit.view": [
       "super_admin",
       "admin"
+    ],
+    "backup.download": [
+      "super_admin"
     ]
   }
 }
