@@ -1,0 +1,7 @@
+# TransCash — racine du site (Hostinger)
+Options -Indexes
+RewriteEngine On
+# Toujours en HTTPS (le cookie de session est alors marqué « secure »)
+RewriteCond %{HTTPS} off
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
