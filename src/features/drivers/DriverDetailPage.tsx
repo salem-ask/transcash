@@ -8,6 +8,7 @@ import { formatDay, todayIn } from '../../domain/fleet'
 import { can } from '../../domain/permissions'
 import type { DriverDetail } from '../../domain/types'
 import { errorText, useLoad } from '../../lib/useLoad'
+import { LedgerView } from '../payments/LedgerView'
 
 export function DriverDetailPage() {
   const { id } = useParams()
@@ -17,6 +18,7 @@ export function DriverDetailPage() {
   const canAccounts = can(role, 'users.manage')
   const today = todayIn(bundle!.settings.timezone)
   const { data, error, setData } = useLoad(() => backend.getDriver(id!), [id])
+  const ledger = useLoad(() => backend.getLedger(id!), [id])
   const [panel, setPanel] = useState<null | 'account' | 'deactivate'>(null)
   const [password, setPassword] = useState('')
   const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
@@ -100,7 +102,10 @@ export function DriverDetailPage() {
         )}
       </Card>
 
-      <Card title="Historique">
+      {ledger.data && <LedgerView data={ledger.data} canCollect={can(role, 'payments.create')} />}
+      {ledger.error && <Alert>{ledger.error}</Alert>}
+
+      <Card title="Historique des engins">
         <AssignmentHistory items={data.assignments} show="vehicle" today={today} />
       </Card>
 

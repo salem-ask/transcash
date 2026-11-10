@@ -10,6 +10,7 @@ import { can } from '../../domain/permissions'
 import type { Driver, VehicleDetail } from '../../domain/types'
 import { WEEKDAYS } from '../../lib/format'
 import { errorText, useLoad } from '../../lib/useLoad'
+import { VehicleDaysCard } from './VehicleDaysCard'
 
 type Panel = null | 'assign' | 'unassign' | 'retire'
 
@@ -151,6 +152,7 @@ export function VehicleDetailPage() {
                   </Select>
                   <Field label="Premier jour de conduite" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
                   {current && <p className="text-xs text-ink-soft">{current.name} terminera la veille ({formatDay(addDays(date, -1))}).</p>}
+                  {date < today && <p className="text-xs text-danger">Date passée : chaque jour travaillé depuis le {formatDay(date)} sans versement deviendra une dette.</p>}
                 </>
               )
             ) : (
@@ -170,6 +172,8 @@ export function VehicleDetailPage() {
           </form>
         )}
       </Card>
+
+      {v.status === 'active' && <VehicleDaysCard vehicle={v} canMark={can(session?.user?.role, 'days.mark')} />}
 
       <Card title="Historique des chauffeurs">
         <AssignmentHistory items={assignments} show="driver" today={today} />
