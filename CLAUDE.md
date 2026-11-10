@@ -137,7 +137,10 @@ filtre par `owner_id` de l'utilisateur connecté (multi-tenant).
 - pour chaque jour où le chauffeur est affecté : attendu = montant en vigueur ce jour-là, sauf jour de repos
   (engin ou paramètres), panne, ou montant exceptionnel (marque `day_marks`) ;
 - payé = somme des `payment_allocations` des versements non annulés ; reste = attendu − payé ;
-- dette = reste des jours passés ; avance = payé sur les jours futurs ; tout est recalculé à chaque lecture.
+- dette = reste des jours passés ; avance = payé sur les jours futurs ; tout est recalculé à chaque lecture ;
+- immobilisations (`breakdowns`) = jours « panne » (via `withBreakdowns` / `load_marks`).
+
+**Caisse :** solde = versements non annulés (sauf `driver_expense`) + apports − dépenses payées par la caisse − retraits.
 
 ---
 
@@ -159,15 +162,15 @@ transcash/
 │   ├── migrations/         # changements par phase pour une base déjà installée
 │   ├── permissions.json    # droits par rôle (partagé avec l'interface)
 │   ├── lib/                # core (BDD, JSON, journal), auth, taux, fleet (dates, montants), ledger (dettes)
-│   ├── routes/             # auth, settings (+ taux), users, vehicles, drivers, payments (+ journées), dashboard
+│   ├── routes/             # auth, settings (+ taux), users, vehicles, drivers, payments (+ journées), finance (dépenses, caisse, immobilisations, échéances, journal), dashboard
 │   └── tests/api_test.php  # test d'intégration (base de TEST vidée)
 ├── scripts/                # copy-api.mjs, preview-artifact.mjs
 └── src/
     ├── app/                # App (routes), Layout (navigation), session (contexte)
     ├── components/         # ui.tsx (Button, Field, Card…), Money.tsx
     ├── data/               # backend.ts (contrat), apiBackend.ts, demoBackend.ts
-    ├── domain/             # règles métier pures + tests (money, fleet, ledger, receipt, permissions, types)
-    ├── features/           # auth, dashboard, payments, vehicles, drivers, settings, users, account (+ menu)
+    ├── domain/             # règles métier pures + tests (money, fleet, ledger, receipt, finance, permissions, types)
+    ├── features/           # auth, dashboard, payments, expenses, cash, reminders, audit, vehicles, drivers, settings, users, account
     └── lib/                # format (dates), useLoad (chargement), search (recherche sans accents)
 ```
 
@@ -263,11 +266,15 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Vue par engin : journées récentes (chauffeur, attendu, payé) ; vue chauffeur : situation, impayés, reçus
 - [ ] Vue semaine (tableau de bord « semaine ») — à faire avec les rapports (phase 5)
 
-### Phase 4 — Dépenses, pannes, immobilisations
-- [ ] Dépenses par engin
-- [ ] Pannes et immobilisations
-- [ ] Caisse générale, retraits du propriétaire, clôture journalière
-- [ ] Alertes d'échéance (assurance, vignette, vidange)
+### Phase 4 — Dépenses, pannes, immobilisations ✅
+- [x] Dépenses par engin ou générales (9 catégories, fournisseur, note), modifiables et annulables avec motif
+- [x] Dépense **payée par le chauffeur** : comptée comme versement sur les journées cochées, sans sortie de caisse
+- [x] Immobilisations sur plusieurs jours (en cours ou datées) : aucun versement exigé, remise en service, réparations liées
+- [x] **Caisse unique** (solde FC et solde $) : versements reçus, dépenses de caisse, retraits et apports du propriétaire
+- [x] ~~Clôture journalière~~ remplacée par la traçabilité : tout modifiable, chaque changement dans le journal
+- [x] Journal d'activité consultable (ancienne / nouvelle valeur, date, utilisateur)
+- [x] Échéances (assurance, vignette, vidange, contrôle technique, autre) : alerte N jours avant, renouvellement
+- [x] Bilan par engin (versements, dépenses, bénéfice du mois) ; tableau de bord : dépenses, bénéfice réel, caisse, alertes
 
 ### Phase 5 — Rapports et exports
 - [ ] Rapports (période, engin, chauffeur)
@@ -278,11 +285,13 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [ ] Stockage local + file de synchronisation
 - [ ] Synchronisation sans perte ni doublon
 - [ ] Application installable (Android, ordinateur)
-- [ ] Journal des modifications
+- [x] Journal des modifications (fait en phase 4)
 - [ ] Sauvegardes
 - [ ] Protection contre les suppressions accidentelles
 
 ### Questions ouvertes
+- Alertes d'échéance : affichées dans l'application uniquement (pas encore de notification sur le téléphone — phase 6).
+- Vidange suivie par date (pas encore au kilométrage).
 - Indicatif des reçus WhatsApp/SMS : les numéros locaux (0…) sont considérés comme congolais (+243).
 - Droit « marquer une journée » (repos/panne/montant exceptionnel) donné aussi au gestionnaire et au comptable.
 - Super admin : aujourd'hui = rôle le plus élevé **dans** une entreprise. Faut-il plus tard un
@@ -330,6 +339,13 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | Versement converti une seule fois dans la devise des journées | Éviter les pertes d'arrondi jour par jour |
 | 2026-11-10 | Reçus : numéro séquentiel par propriétaire ; envoi par liens wa.me / sms: | Aucun coût d'API |
 | 2026-11-10 | Démo : données relatives à la date du jour | Le parc d'exemple reste réaliste quel que soit le jour d'ouverture |
+| 2026-11-10 | **Une seule caisse** (un solde en FC, un en $), tous modes de paiement confondus | Choix du propriétaire |
+| 2026-11-10 | **Dépense payée par le chauffeur = versement** sur les journées choisies (mode `driver_expense`), sans entrée en caisse | Choix du propriétaire |
+| 2026-11-10 | **Pas de clôture journalière** : tout reste modifiable, chaque modification tracée (journal d'activité consultable) | Choix du propriétaire |
+| 2026-11-10 | Retraits / apports et caisse : super admin, admin, comptable (`cash.manage`) | Choix du propriétaire |
+| 2026-11-10 | Immobilisations (`breakdowns`) transformées en jours « panne » dans le grand livre ; une marque explicite du jour reste prioritaire | Une réparation finie à midi peut être une demi-journée |
+| 2026-11-10 | Immobilisation refusée sur des jours déjà payés | Ne pas « perdre » un versement sur un jour devenu non dû |
+| 2026-11-10 | Bénéfice = tous les versements (y compris dépenses payées par chauffeur) − toutes les dépenses | Cohérent : la dépense chauffeur est à la fois un revenu et une charge |
 
 ---
 
