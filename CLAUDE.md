@@ -93,70 +93,75 @@ utilisable avec une connexion faible ou absente.
 
 ---
 
-## 5. Stack technique (validée le 2026-11-10)
+## 5. Stack technique (validée — tout sur Hostinger)
 
-| Besoin | Choix proposé | Pourquoi |
-|--------|---------------|----------|
-| Interface | **React + TypeScript + Vite** | Rapide, écosystème large, typage sûr pour les calculs d'argent |
-| Application installable | **PWA** (vite-plugin-pwa) | Installable sur Android et ordinateur sans passer par un store ; une seule base de code |
-| Style | **Tailwind CSS** | Interface mobile d'abord, légère |
-| Stockage local (offline) | **IndexedDB via Dexie.js** | Saisie hors connexion, file d'attente de synchronisation |
-| Backend / base de données | **Supabase** (PostgreSQL + Auth + Row Level Security) | Multi-tenant par RLS, authentification incluse, offre gratuite pour démarrer |
-| Exports | jsPDF / SheetJS (xlsx) | PDF et Excel côté client |
-| Reçus | Liens `wa.me` / `sms:` pré-remplis | Aucun coût d'API au départ |
-| Tests | **Vitest** (unitaires, règles de calcul) + **Playwright** (parcours) | |
-| Hébergement de l'application | **Hostinger** (fichiers statiques du build `dist/`) | Choix du propriétaire ; une PWA est un site statique, compatible avec l'hébergement mutualisé |
-| Hébergement des données | **Supabase** (service en ligne, séparé d'Hostinger) | Hostinger mutualisé ne peut pas faire tourner PostgreSQL + Auth + RLS |
+| Besoin | Choix | Pourquoi |
+|--------|-------|----------|
+| Interface | **React 19 + TypeScript + Vite** | Rapide, typage sûr pour les calculs d'argent |
+| Style | **Tailwind CSS 4** | Interface mobile d'abord, légère |
+| Navigation | **HashRouter** (`#/parametres`) | Fonctionne sur Hostinger sans règle serveur et dans la prévisualisation |
+| API | **PHP 8 sans framework** (`api/`), PDO | Tourne sur tout hébergement Hostinger, aucune dépendance à installer |
+| Base de données | **MySQL / MariaDB Hostinger** | Inclus dans l'offre Hostinger |
+| Authentification | Sessions PHP (cookie `HttpOnly`, `SameSite=Lax`), `password_hash` | Simple et sûr, même domaine que l'interface |
+| Droits | `api/permissions.json`, lu par PHP **et** par l'interface | Une seule source de vérité |
+| Prévisualisation | Build « preview » en un seul fichier HTML, **mode démo** (données dans le navigateur) | Voir l'application sans serveur (artefact claude.ai) |
+| Application installable | PWA (phase 6) | Android et ordinateur, sans store |
+| Stockage local (offline) | IndexedDB via Dexie.js (phase 6) | Saisie hors connexion, file de synchronisation |
+| Exports | jsPDF / SheetJS (phase 5) | PDF et Excel côté client |
+| Reçus | Liens `wa.me` / `sms:` pré-remplis (phase 3) | Aucun coût d'API |
+| Tests | **Vitest** (règles métier) + test d'intégration PHP (`api/tests/api_test.php`) + Playwright (parcours) | |
 
-**Principes de synchronisation (sans perte ni doublon) :**
-- chaque enregistrement a un **UUID généré sur l'appareil** → l'envoi est idempotent (upsert) ;
-- champs `created_at`, `updated_at`, `deleted_at` (suppression logique), `version` ;
+**Sécurité de l'API :** toute écriture exige l'en-tête `X-TransCash: 1` (anti-CSRF) ; blocage après
+8 échecs de connexion en 15 min ; un compte désactivé est déconnecté immédiatement ; chaque requête
+filtre par `owner_id` de l'utilisateur connecté (multi-tenant).
+
+**Principes de synchronisation (phase 6, prévus dès maintenant) :**
+- chaque enregistrement a un **UUID** (généré sur l'appareil) → envoi idempotent (upsert) ;
+- champs `created_at`, `updated_at`, `deleted_at` (suppression logique) ;
 - file d'attente locale des opérations, rejouée à la reconnexion ;
 - opérations clôturées = verrouillées côté serveur.
 
 **Montants et devises :**
-- montants stockés en **entiers** (plus petite unité de la devise : franc pour le CDF, cent pour l'USD),
-  jamais en nombre à virgule ;
-- devise principale **CDF (franc congolais)**, avec **équivalence en USD** affichable ; l'administrateur
-  peut aussi choisir l'inverse (USD principal, équivalence en CDF) dans les paramètres ;
-- le **taux de change** est saisi par l'administrateur (règles de détail en attente de validation, voir
-  « Questions ouvertes ») ;
-- d'autres devises seront ajoutées plus tard : le modèle porte un code devise (ISO 4217) sur chaque montant.
+- montants stockés en **entiers** dans l'unité minimale : **CDF = 0 décimale** (franc),
+  **USD = 2 décimales** (cent) — voir `src/domain/money.ts` ;
+- devise principale **CDF**, équivalence **USD** affichable (ou l'inverse), au choix de l'administrateur ;
+- **taux de change** = nombre de CDF pour 1 USD, **historisé** (table `exchange_rates`) :
+  - mode **automatique** : récupéré sur `open.er-api.com` (sans clé), rafraîchi toutes les 6 h ;
+    si la source est injoignable, le dernier taux connu est utilisé ;
+  - mode **manuel** : saisi par admin / super admin / comptable ;
+- un paiement dans l'autre devise est **converti au taux fixé par l'administrateur** ; chaque
+  opération enregistrera le taux utilisé (phase 3) pour que l'historique ne change jamais ;
+- d'autres devises plus tard : chaque montant porte un code ISO 4217.
 
 ---
 
-## 6. Structure des dossiers (prévue)
+## 6. Structure des dossiers
 
 ```
 transcash/
 ├── CLAUDE.md
-├── README.md
-├── .gitignore
-├── .env.example            # modèles de variables, SANS valeurs secrètes
+├── README.md               # installation et déploiement Hostinger
+├── index.html
 ├── package.json
-├── public/                 # icônes, manifeste PWA
-├── src/
-│   ├── app/                # routes, mise en page, navigation
-│   ├── features/           # un dossier par module
-│   │   ├── auth/
-│   │   ├── dashboard/
-│   │   ├── settings/
-│   │   ├── vehicles/       # engins
-│   │   ├── drivers/        # chauffeurs
-│   │   ├── payments/       # versements
-│   │   ├── debts/          # dettes
-│   │   ├── expenses/       # dépenses (P2)
-│   │   ├── breakdowns/     # pannes / immobilisations (P2)
-│   │   ├── cash/           # caisse, retraits, clôture (P2)
-│   │   └── reports/        # rapports, exports (P2)
-│   ├── domain/             # règles métier pures (calculs dettes, attendus…) + tests
-│   ├── data/               # accès données : Dexie (local), Supabase (distant), synchro
-│   ├── components/         # composants UI réutilisables
-│   ├── lib/                # utilitaires (dates, formatage monnaie…)
-│   └── i18n/               # textes en français
-├── supabase/
-│   └── migrations/         # schéma SQL, politiques RLS
-└── tests/                  # tests de bout en bout (Playwright)
+├── vite.config.ts          # modes : production (dist/) et preview (fichier unique, démo)
+├── .env.preview            # VITE_BACKEND=demo (aucun secret)
+├── api/                    # API PHP (copiée dans dist/api au build)
+│   ├── index.php           # routeur unique
+│   ├── .htaccess           # réécriture + blocage des fichiers sensibles
+│   ├── config.example.php  # modèle ; config.php (secrets) n'est JAMAIS commité
+│   ├── schema.sql          # schéma MySQL à importer dans phpMyAdmin
+│   ├── permissions.json    # droits par rôle (partagé avec l'interface)
+│   ├── lib/                # core (BDD, JSON, journal), auth, taux
+│   ├── routes/             # auth, settings (+ taux), users, dashboard
+│   └── tests/api_test.php  # test d'intégration (base de TEST vidée)
+├── scripts/                # copy-api.mjs, preview-artifact.mjs
+└── src/
+    ├── app/                # App (routes), Layout (navigation), session (contexte)
+    ├── components/         # ui.tsx (Button, Field, Card…), Money.tsx
+    ├── data/               # backend.ts (contrat), apiBackend.ts, demoBackend.ts
+    ├── domain/             # règles métier pures + tests (money, permissions, types)
+    ├── features/           # un dossier par module : auth, dashboard, settings, users, account…
+    └── lib/                # format (dates, jours)
 ```
 
 ---
@@ -179,21 +184,25 @@ transcash/
 
 ---
 
-## 8. Commandes utiles (une fois le projet initialisé)
+## 8. Commandes utiles
 
 ```bash
-npm install          # installer les dépendances
-npm run dev          # lancer en développement
-npm run build        # construire la version de production
-npm run preview      # tester la version construite (PWA)
-npm test             # tests unitaires (Vitest)
-npm run test:e2e     # tests de bout en bout (Playwright)
-npm run lint         # vérification du code
+npm install              # installer les dépendances
+npm run dev              # interface en développement (http://localhost:5173), /api → port 8000
+npm run api              # API PHP locale sur le port 8000 (nécessite api/config.php)
+npm test                 # tests unitaires (Vitest)
+TRANSCASH_CONFIG=/chemin/config.test.php npm run test:api   # tests API (base de TEST vidée !)
+npm run lint             # vérification du code
+npm run build            # build Hostinger → dist/ (interface + api/, sans config.php)
+npm run build:preview    # prévisualisation démo → preview/artifact.html
 ```
 
-**Déploiement (Hostinger) :** `npm run build`, puis envoyer le contenu de `dist/` dans `public_html/`
-(gestionnaire de fichiers, FTP ou déploiement Git d'Hostinger). Prévoir une règle `.htaccess` qui renvoie
-toutes les routes vers `index.html`.
+**Déploiement (Hostinger) :** voir README.md. En bref : créer la base MySQL, importer
+`api/schema.sql`, envoyer le contenu de `dist/` dans `public_html/`, créer `public_html/api/config.php`
+à partir de `config.example.php`, ouvrir le site et créer le compte principal.
+
+**Prévisualisation :** https://claude.ai/artifact/8n13guotYeo2WqaeFKJXJW (mode démo, privée).
+La republier après chaque phase (`npm run build:preview`, puis publier `preview/artifact.html`).
 
 ---
 
@@ -203,17 +212,23 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 
 ### Fondations
 - [x] Dépôt git initialisé, remote GitHub configuré
-- [~] CLAUDE.md (mémoire du projet)
+- [x] CLAUDE.md (mémoire du projet)
 - [x] .gitignore
 - [x] Validation de la stack technique
-- [ ] Initialisation du projet (Vite + React + TS + PWA)
-- [ ] Schéma de base de données multi-tenant + RLS
+- [x] Initialisation du projet (Vite + React + TS + Tailwind)
+- [x] Schéma MySQL multi-tenant (owners, users, settings, exchange_rates, audit_log, login_attempts)
+- [x] API PHP (routeur, sessions, CSRF, anti force brute, journal des modifications)
+- [x] Prévisualisation en mode démo (artefact)
+- [ ] Premier déploiement sur Hostinger (en attente de la connexion Hostinger)
 
-### Phase 1 — Authentification, tableau de bord, paramètres
-- [ ] Connexion / déconnexion
-- [ ] Profils et rôles (super admin, admin, comptable, gestionnaire, chauffeur)
-- [ ] Paramètres (devise principale CDF/USD, équivalence, taux de change, fuseau horaire, jours de repos par défaut)
-- [ ] Tableau de bord (squelette)
+### Phase 1 — Authentification, tableau de bord, paramètres ✅
+- [x] Installation : création du compte principal (entreprise + super admin), une seule fois
+- [x] Connexion / déconnexion (e-mail ou téléphone), changement de mot de passe
+- [x] Profils et rôles (super admin, admin, comptable, gestionnaire, chauffeur) + écran Équipe
+- [x] Paramètres : devise principale CDF/USD, équivalence, fuseau horaire, jours de repos
+- [x] Taux de change automatique / manuel, historique
+- [x] Tableau de bord (squelette : chiffres à zéro jusqu'aux phases 2-3, taux du jour)
+- [ ] Vue « chauffeur » détaillée (sera remplie en phase 3 avec ses versements et dettes)
 
 ### Phase 2 — Engins et chauffeurs
 - [ ] Engins (CRUD, montant journalier attendu, statut)
@@ -249,8 +264,11 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [ ] Protection contre les suppressions accidentelles
 
 ### Questions ouvertes
-- Taux de change CDF/USD : un taux unique modifiable, ou un taux du jour enregistré avec chaque opération ?
-- Un versement peut-il être encaissé dans l'une ou l'autre devise (ex. chauffeur qui paie en USD un montant attendu en CDF) ?
+- **Droits par rôle** (`api/permissions.json`) : proposition à valider par le propriétaire. Points notables :
+  le comptable peut saisir un taux manuel mais pas modifier les paramètres ; le gestionnaire gère engins,
+  chauffeurs et saisit les versements mais ne peut pas les corriger ; seuls admin / super admin gèrent l'équipe.
+- Super admin : aujourd'hui = rôle le plus élevé **dans** une entreprise. Faut-il plus tard un
+  super admin « plateforme » qui voit toutes les entreprises ?
 
 ---
 
@@ -266,10 +284,18 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | Aucun versement exigé pendant une immobilisation | Le chauffeur ne peut pas travailler |
 | 2026-11-10 | Offline first, synchronisation sans perte ni doublon | Connexion souvent instable sur le terrain |
 | 2026-11-10 | Montants stockés en entiers | Éviter les erreurs d'arrondi |
-| 2026-11-10 | Stack validée : React + TypeScript + Vite (PWA), Tailwind, Dexie, Supabase | Une seule base de code installable sur Android et ordinateur, offline possible, multi-tenant par RLS |
-| 2026-11-10 | Application déployée sur Hostinger ; données sur Supabase | Choix du propriétaire pour l'hébergement ; Supabase pour la base et l'authentification |
+| 2026-11-10 | Stack validée : React + TypeScript + Vite (PWA), Tailwind, Dexie, Supabase | *(Supabase remplacé, voir plus bas)* Une seule base de code installable sur Android et ordinateur, offline possible, multi-tenant par RLS |
+| 2026-11-10 | Application déployée sur Hostinger ; données sur Supabase | *(remplacé, voir plus bas)* Choix du propriétaire pour l'hébergement ; Supabase pour la base et l'authentification |
 | 2026-11-10 | Devise principale CDF avec équivalence USD (ou l'inverse, au choix de l'administrateur) ; autres devises plus tard | Réalité des paiements en RDC |
 | 2026-11-10 | Push sur GitHub à la fin de chaque phase (commits petits entre-temps) | Demande du propriétaire |
+| 2026-11-10 | **Tout sur Hostinger : Supabase abandonné** → API PHP 8 + MySQL | Décision du propriétaire ; PHP/MySQL fonctionnent sur toutes les offres Hostinger |
+| 2026-11-10 | API PHP sans framework ni Composer | Déploiement par simple copie de fichiers, rien à installer sur le serveur |
+| 2026-11-10 | Taux de change automatique **et** manuel, au choix de l'admin ; historisé | Décision du propriétaire |
+| 2026-11-10 | Paiement dans l'autre devise converti au taux fixé par l'admin | Décision du propriétaire |
+| 2026-11-10 | CDF sans décimale, USD au cent | Les centimes de franc ne circulent pas |
+| 2026-11-10 | Mode démo (données dans le navigateur) pour la prévisualisation | Montrer l'application sans serveur |
+| 2026-11-10 | Routage par `#` (HashRouter) | Aucune règle de réécriture nécessaire sur Hostinger |
+| 2026-11-10 | Pas de fenêtres `prompt()`/`confirm()` : confirmations intégrées à l'écran | Plus pratique sur téléphone ; bloquées dans la prévisualisation |
 
 ---
 
