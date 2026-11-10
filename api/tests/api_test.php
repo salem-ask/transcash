@@ -429,5 +429,17 @@ check('autre propriétaire : immobilisations inaccessibles', $s === 404);
 [$s, $r] = call('autre', 'GET', '/cash');
 check('autre propriétaire : sa propre caisse est vide', $s === 200 && $r['balance'] === ['CDF' => 0, 'USD' => 0], $r);
 
+echo "Rapports\n";
+[$s, $r] = call('compta', 'GET', '/reports/data?from=' . $day(-10) . '&to=' . $day(0));
+$busDays = array_filter($r['days'] ?? [], fn($d) => $d['vehicleId'] === $bus);
+check('données de rapport (comptable)', $s === 200 && count($busDays) >= 5 && count($r['payments']) > 0 && count($r['expenses']) > 0, array_slice($r, 0, 5));
+check('aucune journée future dans le rapport', max(array_column($r['days'], 'date')) <= $day(0));
+[$s] = call('gestion', 'GET', '/reports/data');
+check('le gestionnaire ne voit pas les rapports', $s === 403);
+[$s, $r] = call('compta', 'GET', '/reports/data?from=2026-01-01&to=2025-01-01');
+check('période inversée refusée', $s === 422, $r);
+[$s, $r] = call('autre', 'GET', '/reports/data');
+check('autre propriétaire : aucun engin', $s === 200 && $r['vehicles'] === [] && $r['days'] === [], $r);
+
 echo $failures === 0 ? "\nTous les tests API passent.\n" : "\n$failures test(s) en échec.\n";
 exit($failures === 0 ? 0 : 1);

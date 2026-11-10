@@ -16,6 +16,7 @@ require __DIR__ . '/routes/vehicles.php';
 require __DIR__ . '/routes/drivers.php';
 require __DIR__ . '/routes/payments.php';
 require __DIR__ . '/routes/finance.php';
+require __DIR__ . '/routes/reports.php';
 require __DIR__ . '/routes/dashboard.php';
 
 header('X-Content-Type-Options: nosniff');
@@ -82,6 +83,7 @@ $routes = [
     ['POST', '/reminders/{id}/done', 'reminders_done'],
     ['POST', '/reminders/{id}/cancel', 'reminders_cancel'],
     ['GET', '/audit', 'audit_list'],
+    ['GET', '/reports/data', 'reports_data'],
     ['GET', '/dashboard', 'dashboard_get'],
 ];
 
