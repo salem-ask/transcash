@@ -7,3 +7,4 @@
 | Fichier | Phase |
 |---------|-------|
 | `002_engins_chauffeurs.sql` | 2 — engins, chauffeurs, affectations |
+| `003_versements_dettes.sql` | 3 — journées marquées, versements, répartition |

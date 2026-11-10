@@ -8,11 +8,13 @@ require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/auth.php';
 require __DIR__ . '/lib/rates.php';
 require __DIR__ . '/lib/fleet.php';
+require __DIR__ . '/lib/ledger.php';
 require __DIR__ . '/routes/auth.php';
 require __DIR__ . '/routes/settings.php';
 require __DIR__ . '/routes/users.php';
 require __DIR__ . '/routes/vehicles.php';
 require __DIR__ . '/routes/drivers.php';
+require __DIR__ . '/routes/payments.php';
 require __DIR__ . '/routes/dashboard.php';
 
 header('X-Content-Type-Options: nosniff');
@@ -51,6 +53,14 @@ $routes = [
     ['GET', '/drivers/{id}', 'drivers_get'],
     ['PUT', '/drivers/{id}', 'drivers_update'],
     ['POST', '/drivers/{id}/account', 'drivers_create_account'],
+    ['GET', '/vehicles/{id}/days', 'vehicles_days'],
+    ['POST', '/vehicles/{id}/days', 'vehicles_mark_day'],
+    ['GET', '/drivers/{id}/ledger', 'drivers_ledger'],
+    ['GET', '/me/ledger', 'me_ledger'],
+    ['GET', '/payments', 'payments_list'],
+    ['POST', '/payments', 'payments_create'],
+    ['GET', '/payments/{id}', 'payments_get'],
+    ['POST', '/payments/{id}/cancel', 'payments_cancel'],
     ['GET', '/dashboard', 'dashboard_get'],
 ];
 

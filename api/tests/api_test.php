@@ -13,11 +13,12 @@ if (!$configFile || !is_file($configFile)) {
 $config = require $configFile;
 $c = $config['db'];
 $pdo = new PDO("mysql:host={$c['host']};dbname={$c['name']};charset=utf8mb4", $c['user'], $c['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-foreach (['assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
+foreach (['payment_allocations', 'payments', 'day_marks', 'assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
     $pdo->exec("DROP TABLE IF EXISTS $t");
 }
 $pdo->exec((string)file_get_contents(__DIR__ . '/../schema.sql'));
 $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/002_engins_chauffeurs.sql')); // rejouable sans erreur
+$pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/003_versements_dettes.sql'));
 
 $port = 8765;
 $root = realpath(__DIR__ . '/..');
@@ -226,6 +227,111 @@ check('un autre propriétaire ne voit aucun engin', $s === 200 && $r['vehicles']
 check('ni par accès direct', $s === 404);
 [$s] = call('autre', 'POST', "/vehicles/$moto/unassign", []);
 check('ni en écriture', $s === 404);
+
+echo "Versements et dettes\n";
+$T = (new DateTimeImmutable('now', new DateTimeZone('Africa/Kinshasa')));
+$day = fn(int $n) => $T->modify(($n >= 0 ? '+' : '') . "$n day")->format('Y-m-d');
+$uuid = function (): string {
+    $b = random_bytes(16);
+    $b[6] = chr((ord($b[6]) & 0x0f) | 0x40);
+    $b[8] = chr((ord($b[8]) & 0x3f) | 0x80);
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
+};
+[, $r] = call('boss', 'POST', '/vehicles', ['type' => 'minibus', 'name' => 'Bus', 'dailyAmount' => 50000, 'currency' => 'CDF', 'serviceDate' => $day(-10)]);
+$bus = $r['vehicle']['id'];
+[, $r] = call('boss', 'POST', '/drivers', ['name' => 'Eric Kasongo', 'phone' => '0815555555']);
+$eric = $r['driver']['id'];
+call('boss', 'POST', "/vehicles/$bus/assign", ['driverId' => $eric, 'startDate' => $day(-5)]);
+
+[$s, $r] = call('boss', 'GET', "/drivers/$eric/ledger");
+check('grand livre : 5 jours passés dus = 250 000 FC de dettes', $s === 200 && ($r['summary']['arrears']['CDF'] ?? 0) === 250000
+    && $r['summary']['unpaidDays'] === 5 && ($r['summary']['dueToday']['CDF'] ?? 0) === 50000, $r['summary'] ?? $r);
+
+$p1 = $uuid();
+$pay1 = ['id' => $p1, 'driverId' => $eric, 'kind' => 'daily', 'amount' => 60000, 'currency' => 'CDF', 'method' => 'cash',
+    'days' => [['date' => $day(-5), 'vehicleId' => $bus], ['date' => $day(-4), 'vehicleId' => $bus]]];
+[$s, $r] = call('compta', 'POST', '/payments', $pay1);
+check('versement : 1er jour complet, 2e partiel', $s === 200 && $r['receiptNo'] === 1
+    && array_column($r['allocations'], 'amount') === [50000, 10000], $r);
+[$s, $r] = call('compta', 'POST', '/payments', $pay1);
+$n = (int)$pdo->query('SELECT COUNT(*) FROM payments')->fetchColumn();
+check('renvoi du même versement : aucun doublon', $s === 200 && $r['receiptNo'] === 1 && $n === 1, [$r, $n]);
+
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 100000, 'currency' => 'CDF', 'method' => 'cash',
+    'days' => [['date' => $day(-4), 'vehicleId' => $bus]]]);
+check('surplus non affecté refusé', $s === 422 && str_contains($r['error'], 'surplus'), $r);
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 30000, 'currency' => 'CDF', 'method' => 'cash',
+    'days' => [['date' => $day(-4), 'vehicleId' => $bus], ['date' => $day(-3), 'vehicleId' => $bus]]]);
+check('montant insuffisant pour toutes les journées cochées refusé', $s === 422, $r);
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 30000, 'currency' => 'CDF', 'method' => 'cash',
+    'days' => [['date' => $day(-6), 'vehicleId' => $bus]]]);
+check('journée où il ne conduisait pas refusée', $s === 422, $r);
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 30000, 'currency' => 'CDF', 'method' => 'troc',
+    'days' => [['date' => $day(-3), 'vehicleId' => $bus]]]);
+check('mode de paiement obligatoire', $s === 422, $r);
+
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 2000, 'currency' => 'USD', 'method' => 'mobile_money',
+    'reference' => 'MP2611.1234', 'days' => [['date' => $day(-4), 'vehicleId' => $bus], ['date' => $day(-3), 'vehicleId' => $bus]]]);
+check('versement de 20 $ converti (2 900) sur des journées en francs', $s === 200 && array_column($r['allocations'], 'amount') === [40000, 18000]
+    && (float)$r['rate'] === 2900.0 && $r['receiptNo'] === 2, $r);
+[$s, $r] = call('boss', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 50000, 'currency' => 'CDF', 'method' => 'cash',
+    'days' => [['date' => $day(1), 'vehicleId' => $bus]]]);
+check('versement anticipé (demain)', $s === 200, $r);
+
+echo "Journées repos / panne / exceptionnel\n";
+[$s, $r] = call('boss', 'POST', "/vehicles/$bus/days", ['date' => $day(-2), 'kind' => 'breakdown', 'reason' => 'Embrayage']);
+check('panne : rien de dû ce jour-là', $s === 200 && current(array_filter($r['days'], fn($d) => $d['date'] === $day(-2)))['expected'] === 0, $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$bus/days", ['date' => $day(-4), 'kind' => 'rest']);
+check('repos refusé sur un jour déjà payé', $s === 422, $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$bus/days", ['date' => $day(-1), 'kind' => 'override', 'amount' => 20000, 'currency' => 'CDF']);
+check('montant exceptionnel sans raison refusé', $s === 422, $r);
+[$s, $r] = call('boss', 'POST', "/vehicles/$bus/days", ['date' => $day(-1), 'kind' => 'override', 'amount' => 20000, 'currency' => 'CDF', 'reason' => 'Demi-journée']);
+check('montant exceptionnel appliqué', $s === 200 && current(array_filter($r['days'], fn($d) => $d['date'] === $day(-1)))['expected'] === 20000, $r);
+[$s] = call('compta', 'POST', "/vehicles/$bus/days", ['date' => $day(-6), 'kind' => 'rest']);
+check('le comptable peut marquer une journée', $s === 200);
+[$s, $r] = call('boss', 'POST', "/vehicles/$bus/days", ['date' => $day(-6), 'kind' => 'clear']);
+check('marque retirée', $s === 200 && current(array_filter($r['days'], fn($d) => $d['date'] === $day(-6)))['mark'] === null, $r);
+
+echo "Exceptionnel et annulation\n";
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'kind' => 'extra', 'amount' => 10000, 'currency' => 'CDF', 'method' => 'cash']);
+check('versement exceptionnel sans motif refusé', $s === 422, $r);
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'kind' => 'extra', 'amount' => 10000, 'currency' => 'CDF', 'method' => 'cash', 'note' => 'Participation pneu']);
+check('versement exceptionnel enregistré, aucune journée payée', $s === 200 && $r['allocations'] === [] && $r['vehicleId'] === $bus, $r);
+[$s] = call('compta', 'POST', "/payments/$p1/cancel", []);
+check('annulation sans motif refusée', $s === 422);
+[$s, $r] = call('compta', 'POST', "/payments/$p1/cancel", ['reason' => 'Erreur de saisie']);
+check('annulation avec motif', $s === 200 && $r['cancelled'] === true, $r);
+[$s, $r] = call('compta', 'POST', "/payments/$p1/cancel", ['reason' => 'encore']);
+check('double annulation refusée', $s === 422, $r);
+
+[$s, $r] = call('boss', 'GET', "/drivers/$eric/ledger");
+// J-5 : 50 000 (versement annulé) ; J-4 : 10 000 ; J-3 : 32 000 ; J-2 : panne ; J-1 : 20 000 (exceptionnel) → 112 000 FC
+check('dettes recalculées après panne, exceptionnel et annulation', $s === 200 && ($r['summary']['arrears']['CDF'] ?? 0) === 112000
+    && $r['summary']['unpaidDays'] === 4 && ($r['summary']['advance']['CDF'] ?? 0) === 50000, $r['summary'] ?? $r);
+
+echo "Accès du chauffeur et tableau de bord\n";
+call('boss', 'POST', "/drivers/$eric/account", ['password' => 'chauffeur2']);
+call('eric', 'POST', '/auth/login', ['login' => '0815555555', 'password' => 'chauffeur2']);
+[$s, $r] = call('eric', 'GET', '/me/ledger');
+check('le chauffeur voit sa propre situation', $s === 200 && ($r['summary']['arrears']['CDF'] ?? 0) === 112000, $r);
+[$s] = call('eric', 'GET', "/drivers/$jean/ledger");
+check("le chauffeur ne voit pas celle d'un autre", $s === 403);
+[$s] = call('eric', 'GET', '/payments');
+check('le chauffeur ne voit pas le journal des versements', $s === 403);
+[$s, $r] = call('eric', 'GET', "/payments/$p1");
+check('le chauffeur voit son reçu', $s === 200 && $r['receiptNo'] === 1, $r);
+[$s] = call('eric', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 1, 'currency' => 'CDF', 'method' => 'cash', 'days' => []]);
+check('le chauffeur ne peut pas saisir de versement', $s === 403);
+[$s, $r] = call('boss', 'GET', '/dashboard');
+$eDebt = current(array_filter($r['debtors'] ?? [], fn($d) => $d['driverId'] === $eric));
+check('tableau de bord : Eric parmi les débiteurs, encaissements du jour', $s === 200 && $eDebt && $eDebt['unpaidDays'] === 4 && $r['today']['received'] > 0, $r);
+[$s, $r] = call('compta', 'GET', '/payments');
+check('journal du jour (4 versements, dont 1 annulé)', $s === 200 && count($r['payments']) === 4 && count(array_filter($r['payments'], fn($p) => $p['cancelled'])) === 1, $r);
+
+[$s] = call('autre', 'GET', "/drivers/$eric/ledger");
+check('autre propriétaire : grand livre inaccessible', $s === 404);
+[$s] = call('autre', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 100, 'currency' => 'CDF', 'method' => 'cash', 'days' => [['date' => $day(0), 'vehicleId' => $bus]]]);
+check('autre propriétaire : versement impossible', $s === 404);
 
 echo $failures === 0 ? "\nTous les tests API passent.\n" : "\n$failures test(s) en échec.\n";
 exit($failures === 0 ? 0 : 1);

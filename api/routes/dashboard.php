@@ -2,17 +2,11 @@
 declare(strict_types=1);
 
 // Tableau de bord. Montants dans la devise principale (unité minimale).
-// Phase 2 : montant attendu aujourd'hui et état du parc. Versements et dettes : phase 3.
 
-/**
- * Ce que chaque engin en service doit rapporter aujourd'hui.
- * Un engin rapporte s'il est en service, a un chauffeur aujourd'hui et que ce n'est pas un jour de repos.
- */
-function expected_today(array $u, array $s, ?array $rate): array
+/** Situation de chaque engin en service aujourd'hui : attendu, déjà payé pour ce jour, reste. */
+function today_lines(array $u, array $s, string $today): array
 {
-    $today = today_for($s['timezone']);
-    $weekday = weekday_of($today);
-    $sql = 'SELECT v.*, d.id AS d_id, d.name AS d_name FROM vehicles v
+    $sql = 'SELECT v.id, d.id AS d_id, d.name AS d_name FROM vehicles v
             LEFT JOIN assignments a ON a.vehicle_id = v.id AND a.start_date <= ? AND (a.end_date IS NULL OR a.end_date >= ?)
             LEFT JOIN drivers d ON d.id = a.driver_id
             WHERE v.owner_id = ? AND v.deleted_at IS NULL AND v.status = ?';
@@ -21,35 +15,56 @@ function expected_today(array $u, array $s, ?array $rate): array
         $sql .= ' AND d.user_id = ?';
         $params[] = $u['id'];
     }
-    $rows = query($sql . ' ORDER BY v.name', $params)->fetchAll();
+    $rows = query($sql, $params)->fetchAll();
+    $vehicles = ledger_vehicles(array_column($rows, 'id'));
+    $marks = load_marks(array_column($rows, 'id'), $today, $today);
+    $defaultRest = json_decode($s['rest_weekdays'], true) ?: [];
 
     $lines = [];
-    $total = 0;
-    $missingRate = false;
-    foreach ($rows as $v) {
-        $amount = amount_on($v['id'], $today);
-        $rest = in_array($weekday, vehicle_rest_days($v, $s), true);
-        $status = !$amount ? 'not_started' : ($rest ? 'rest' : ($v['d_id'] ? 'due' : 'no_driver'));
-        $converted = null;
-        if ($status === 'due') {
-            $converted = convert_amount($amount['amount'], $amount['currency'], $s['base_currency'], $rate ? (float)$rate['rate'] : null);
-            if ($converted === null) {
-                $missingRate = true;
-            } else {
-                $total += $converted;
-            }
-        }
+    foreach ($rows as $r) {
+        $v = $vehicles[$r['id']];
+        $mark = $marks[$v['id'] . '|' . $today] ?? null;
+        $e = expected_for($v, $today, $defaultRest, $mark);
+        $status = $e['kind'] === 'due' && !$r['d_id'] ? 'no_driver' : $e['kind'];
+        $expected = $status === 'due' ? $e['expected'] : 0;
+        $paid = (int)(paid_by_day('vehicle_id', $v['id'], $today, $today)[$v['id'] . '|' . $today] ?? 0);
+        $remaining = max($expected - $paid, 0);
         $lines[] = [
             'vehicleId' => $v['id'],
             'vehicleName' => $v['name'],
             'type' => $v['type'],
-            'driverName' => $v['d_name'],
+            'driverId' => $r['d_id'],
+            'driverName' => $r['d_name'],
             'status' => $status,
-            'amount' => $amount['amount'] ?? 0,
-            'currency' => $amount['currency'] ?? $s['base_currency'],
+            'amount' => $expected ?: (amount_from_history($v['amounts'], $today)['amount'] ?? 0),
+            'paid' => $paid,
+            'remaining' => $remaining,
+            'state' => pay_state($expected, $paid, $remaining),
+            'currency' => $e['currency'],
         ];
     }
-    return ['date' => $today, 'total' => $total, 'missingRate' => $missingRate, 'lines' => $lines];
+    usort($lines, fn($a, $b) => strcmp($a['vehicleName'], $b['vehicleName']));
+    return $lines;
+}
+
+/** Argent reçu (versements non annulés) sur une période, converti au taux enregistré avec chaque versement. */
+function received_between(string $ownerId, string $from, string $to, string $base, ?string $driverId = null): ?int
+{
+    $sql = 'SELECT amount, currency, rate FROM payments WHERE owner_id = ? AND paid_on BETWEEN ? AND ? AND cancelled_at IS NULL';
+    $params = [$ownerId, $from, $to];
+    if ($driverId) {
+        $sql .= ' AND driver_id = ?';
+        $params[] = $driverId;
+    }
+    $sum = 0;
+    foreach (query($sql, $params)->fetchAll() as $p) {
+        $v = convert_amount((int)$p['amount'], $p['currency'], $base, $p['rate'] === null ? null : (float)$p['rate']);
+        if ($v === null) {
+            return null;
+        }
+        $sum += $v;
+    }
+    return $sum;
 }
 
 function dashboard_get(): array
@@ -59,26 +74,92 @@ function dashboard_get(): array
         throw new HttpError(403, "Vous n'avez pas accès au tableau de bord");
     }
     $s = load_settings($u['owner_id']);
-    $rate = effective_rate($u['owner_id'], $s['rate_mode']);
-    $exp = expected_today($u, $s, $rate);
+    $base = $s['base_currency'];
+    $rateRow = effective_rate($u['owner_id'], $s['rate_mode']);
+    $rate = $rateRow ? (float)$rateRow['rate'] : null;
+    $today = today_for($s['timezone']);
+    $lines = today_lines($u, $s, $today);
 
-    $count = fn(string $st) => count(array_filter($exp['lines'], fn($l) => $l['status'] === $st));
-    $active = count($exp['lines']);
+    $missingRate = false;
+    $sumLines = function (string $field) use ($lines, $base, $rate, &$missingRate): int {
+        $t = 0;
+        foreach ($lines as $l) {
+            $v = convert_amount($l[$field], $l['currency'], $base, $rate);
+            if ($v === null) {
+                $missingRate = true;
+            } else {
+                $t += $v;
+            }
+        }
+        return $t;
+    };
+    // « amount » vaut le montant habituel même les jours non dus : on ne compte que les jours dus
+    $expectedToday = 0;
+    foreach ($lines as $l) {
+        if ($l['status'] !== 'due') {
+            continue;
+        }
+        $v = convert_amount($l['amount'], $l['currency'], $base, $rate);
+        if ($v === null) {
+            $missingRate = true;
+        } else {
+            $expectedToday += $v;
+        }
+    }
+
+    // Dettes (arriérés) : jours passés non payés, par chauffeur
+    $driverFilter = $u['role'] === 'driver' ? ' AND d.user_id = ?' : '';
+    $params = $u['role'] === 'driver' ? [$u['owner_id'], $u['id']] : [$u['owner_id']];
+    $drivers = query(
+        "SELECT d.id, d.name, MIN(a.start_date) AS first_day FROM drivers d JOIN assignments a ON a.driver_id = d.id
+         WHERE d.owner_id = ? AND d.deleted_at IS NULL $driverFilter GROUP BY d.id, d.name",
+        $params
+    )->fetchAll();
+    $totalDebt = 0;
+    $debtors = [];
+    $yesterday = add_days($today, -1);
+    foreach ($drivers as $d) {
+        if ($d['first_day'] > $yesterday) {
+            continue;
+        }
+        $sum = summarize_ledger(driver_ledger($s, $d['id'], $d['first_day'], $yesterday), $today);
+        $debt = total_in((array)$sum['arrears'], $base, $rate);
+        if ($debt === null) {
+            $missingRate = true;
+            continue;
+        }
+        if ($debt > 0) {
+            $totalDebt += $debt;
+            $debtors[] = ['driverId' => $d['id'], 'driverName' => $d['name'], 'debt' => $debt, 'unpaidDays' => $sum['unpaidDays']];
+        }
+    }
+    usort($debtors, fn($a, $b) => $b['debt'] <=> $a['debt']);
+
+    $count = fn(string $st) => count(array_filter($lines, fn($l) => $l['status'] === $st));
+    $monthStart = substr($today, 0, 8) . '01';
+    $ownDriver = $u['role'] === 'driver' ? (query('SELECT id FROM drivers WHERE user_id = ?', [$u['id']])->fetchColumn() ?: '-') : null;
+    $receivedMonth = received_between($u['owner_id'], $monthStart, $today, $base, $ownDriver);
     return [
-        'currency' => $s['base_currency'],
-        'date' => $exp['date'],
-        'rate' => public_rate($rate),
-        'today' => ['expected' => $exp['total'], 'paid' => 0, 'debt' => 0],
-        'month' => ['expected' => 0, 'paid' => 0, 'expenses' => 0, 'profit' => 0],
+        'currency' => $base,
+        'date' => $today,
+        'rate' => public_rate($rateRow),
+        'today' => [
+            'expected' => $expectedToday,
+            'paid' => $sumLines('paid'),
+            'debt' => $sumLines('remaining'),
+            'received' => received_between($u['owner_id'], $today, $today, $base, $ownDriver) ?? 0,
+        ],
+        'month' => ['expected' => 0, 'paid' => $receivedMonth ?? 0, 'expenses' => 0, 'profit' => $receivedMonth ?? 0],
         'vehicles' => [
-            'total' => $active,
+            'total' => count($lines),
             'working' => $count('due'),
             'resting' => $count('rest'),
             'noDriver' => $count('no_driver'),
-            'immobilized' => 0,
+            'immobilized' => $count('breakdown'),
         ],
-        'missingRate' => $exp['missingRate'],
-        'lines' => $exp['lines'],
-        'totalDebt' => 0,
+        'missingRate' => $missingRate,
+        'lines' => $lines,
+        'totalDebt' => $totalDebt,
+        'debtors' => array_slice($debtors, 0, 10),
     ];
 }
