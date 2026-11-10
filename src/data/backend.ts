@@ -1,3 +1,4 @@
+import type { ReportData } from '../domain/report'
 import type {
   AuditEntry,
   BreakdownInput,
@@ -103,6 +104,9 @@ export interface Backend {
   cancelReminder(id: string): Promise<{ today: string; reminders: Reminder[] }>
   vehicleFinance(vehicleId: string): Promise<VehicleFinance>
   auditLog(params: { limit?: number; before?: number }): Promise<AuditEntry[]>
+
+  // Phase 5 : rapports (données brutes ; le calcul est fait par src/domain/report.ts)
+  reportData(from: string, to: string): Promise<ReportData>
 }
 
 /** Erreur lisible par l'utilisateur, avec le code HTTP correspondant. */

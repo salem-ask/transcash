@@ -1,5 +1,6 @@
 import type { Backend } from './backend'
 import { BackendError } from './backend'
+import type { ReportData } from '../domain/report'
 import type { AuditEntry, CashState, Expense, ExpenseList, Reminder, VehicleBreakdown, VehicleFinance, LedgerPayload, Payment, PaymentDetail, VehicleDays, Driver, DriverDetail, RatesBundle, SessionState, SettingsBundle, User, Vehicle, VehicleDetail } from '../domain/types'
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? './api'
@@ -85,6 +86,7 @@ export const apiBackend: Backend = {
   doneReminder: (id, nextDueDate) => call<{ today: string; reminders: Reminder[] }>('POST', `/reminders/${id}/done`, { nextDueDate }),
   cancelReminder: (id) => call<{ today: string; reminders: Reminder[] }>('POST', `/reminders/${id}/cancel`, {}),
   vehicleFinance: (id) => call<VehicleFinance>('GET', `/vehicles/${id}/finance`),
+  reportData: (from, to) => call<ReportData>('GET', `/reports/data?${qs({ from, to })}`),
   auditLog: (p) => call<{ entries: AuditEntry[] }>('GET', `/audit?${qs(p)}`).then((r) => r.entries),
 }
 

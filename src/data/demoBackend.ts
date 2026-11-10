@@ -7,6 +7,7 @@ import { convert } from '../domain/money'
 import { addDays, isValidDate, todayIn } from '../domain/fleet'
 import { allocate, driverLedger, expectedFor, summarize, totalIn, withBreakdowns, type Allocation, type Breakdown, type DayMark, type LedgerVehicle, type Totals } from '../domain/ledger'
 import { cashBalance, reminderState, type CashEntry } from '../domain/finance'
+import type { ReportData } from '../domain/report'
 import type {
   NewPaymentInput,
   AuditEntry,
@@ -1128,6 +1129,34 @@ export const demoBackend: Backend = {
     const expenses = s.expenses.filter((e) => !e.cancelled && e.vehicleId === vid && e.spentOn >= from && e.spentOn <= date).reduce((t, e) => t + toBase(e.amount, e.currency, e.rate), 0)
     const current = breakdownsOf(s, vid).find((b) => !b.cancelled && b.startDate <= date && (b.endDate === null || b.endDate >= date)) ?? null
     return { from, to: date, currency: base, revenue, expenses, profit: revenue - expenses, currentBreakdown: current }
+  },
+  async reportData(from, to) {
+    await pause()
+    const s = load()
+    need(s, 'reports.view')
+    if (to < from) fail(422, 'La fin de la période précède son début')
+    const date = today(s)
+    const last = to < date ? to : date
+    const days: ReportData['days'] = []
+    for (const v of s.vehicles) {
+      for (let d = from > v.serviceDate ? from : v.serviceDate; d <= last; d = addDays(d, 1)) {
+        const a = s.assignments.find((x) => x.vehicleId === v.id && x.startDate <= d && (x.endDate === null || x.endDate >= d))
+        const e = expectedFor(ledgerVehicle(v), d, s.settings.restWeekdays, markAt(s, v.id, d))
+        const paid = paidOnVehicleDay(s, v.id, d)
+        if (!a && paid === 0 && e.kind !== 'breakdown') continue
+        days.push({ vehicleId: v.id, date: d, driverId: a?.driverId ?? null, kind: e.kind, expected: a ? e.expected : 0, paid, currency: e.currency })
+      }
+    }
+    return {
+      ownerName: s.ownerName, from, to, today: date, currency: s.settings.baseCurrency, rate: latest(s)?.rate ?? null,
+      vehicles: s.vehicles.map((v) => ({ id: v.id, name: v.name, type: v.type, plate: v.plate, status: v.status })).sort((a, b) => a.name.localeCompare(b.name)),
+      drivers: s.drivers.map((d) => ({ id: d.id, name: d.name, phone: d.phone })).sort((a, b) => a.name.localeCompare(b.name)),
+      days,
+      payments: livePayments(s).filter((p) => p.paidOn >= from && p.paidOn <= to).sort((a, b) => a.paidOn.localeCompare(b.paidOn) || a.receiptNo - b.receiptNo)
+        .map((p) => ({ id: p.id, receiptNo: p.receiptNo, date: p.paidOn, driverId: p.driverId, vehicleId: p.vehicleId, kind: p.kind, method: p.method, amount: p.amount, currency: p.currency, rate: p.rate, reference: p.reference })),
+      expenses: s.expenses.filter((e) => !e.cancelled && e.spentOn >= from && e.spentOn <= to).sort((a, b) => a.spentOn.localeCompare(b.spentOn))
+        .map((e) => ({ id: e.id, date: e.spentOn, vehicleId: e.vehicleId, driverId: e.driverId, category: e.category, amount: e.amount, currency: e.currency, rate: e.rate, paidBy: e.paidBy, note: e.note, supplier: e.supplier })),
+    }
   },
   async auditLog(p) {
     await pause()
