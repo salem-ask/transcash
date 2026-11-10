@@ -1,0 +1,12 @@
+# API TransCash (Apache / LiteSpeed sur Hostinger)
+Options -Indexes
+
+# Fichiers sensibles inaccessibles depuis le web
+<FilesMatch "^(config\.php|config\.example\.php|schema\.sql|permissions\.json)$">
+  Require all denied
+</FilesMatch>
+
+RewriteEngine On
+RewriteRule ^(lib|routes|tests)(/|$) - [F,L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [QSA,L]
