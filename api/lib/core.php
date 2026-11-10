@@ -119,3 +119,40 @@ function audit(string $ownerId, ?string $userId, string $entity, string $entityI
         ]
     );
 }
+
+/**
+ * Installe ou met à jour le schéma automatiquement (pas besoin de phpMyAdmin).
+ * schema.sql est complet et rejouable (CREATE IF NOT EXISTS, ALTER idempotents) ; on ne le rejoue
+ * que si son contenu a changé depuis la dernière fois (empreinte stockée dans la table schema_state).
+ */
+function ensure_schema(): void
+{
+    $file = __DIR__ . '/../schema.sql';
+    $hash = md5_file($file);
+    $pdo = db();
+    try {
+        $current = $pdo->query('SELECT hash FROM schema_state WHERE id = 1')->fetchColumn();
+        if ($current === $hash) {
+            return;
+        }
+    } catch (PDOException) {
+        // table absente : première installation
+    }
+    // Un seul processus applique le schéma à la fois
+    if (!(int)$pdo->query("SELECT GET_LOCK('transcash_schema', 30)")->fetchColumn()) {
+        throw new HttpError(503, 'Mise à jour de la base en cours, réessayez dans un instant');
+    }
+    try {
+        $sql = (string)file_get_contents($file);
+        // Retirer les commentaires (« -- … » jusqu'à la fin de la ligne) avant de découper sur « ; »
+        $sql = preg_replace('/--[^\n]*/', '', $sql);
+        foreach (array_filter(array_map('trim', explode(';', $sql))) as $statement) {
+            $pdo->exec($statement);
+        }
+        $pdo->exec('CREATE TABLE IF NOT EXISTS schema_state (id TINYINT PRIMARY KEY, hash CHAR(32) NOT NULL, applied_at DATETIME NOT NULL)');
+        $stmt = $pdo->prepare('REPLACE INTO schema_state (id, hash, applied_at) VALUES (1, ?, ?)');
+        $stmt->execute([$hash, now_utc()]);
+    } finally {
+        $pdo->query("SELECT RELEASE_LOCK('transcash_schema')");
+    }
+}

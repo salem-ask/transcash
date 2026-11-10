@@ -13,7 +13,7 @@ if (!$configFile || !is_file($configFile)) {
 $config = require $configFile;
 $c = $config['db'];
 $pdo = new PDO("mysql:host={$c['host']};dbname={$c['name']};charset=utf8mb4", $c['user'], $c['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-foreach (['reminders', 'cash_movements', 'expenses', 'breakdowns', 'payment_allocations', 'payments', 'day_marks', 'assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
+foreach (['schema_state', 'reminders', 'cash_movements', 'expenses', 'breakdowns', 'payment_allocations', 'payments', 'day_marks', 'assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
     $pdo->exec("DROP TABLE IF EXISTS $t");
 }
 $pdo->exec((string)file_get_contents(__DIR__ . '/../schema.sql'));

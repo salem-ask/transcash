@@ -88,6 +88,7 @@ $routes = [
 ];
 
 try {
+    ensure_schema();
     // Protection CSRF : toute écriture doit porter l'en-tête X-TransCash (impossible à poser depuis un autre site).
     if ($method !== 'GET' && ($_SERVER['HTTP_X_TRANSCASH'] ?? '') !== '1') {
         throw new HttpError(403, 'Requête refusée');
