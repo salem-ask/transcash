@@ -5,6 +5,9 @@ import { Money } from '../../components/Money'
 import { Alert, ButtonLink, Card, Spinner } from '../../components/ui'
 import { useLoad } from '../../lib/useLoad'
 import { DayStatePill, LedgerView } from '../payments/LedgerView'
+import { ReminderPill } from '../vehicles/VehicleOpsCards'
+import { reminderName } from '../../domain/finance'
+import { formatMoney } from '../../domain/money'
 import { formatRate } from '../../domain/money'
 import { can } from '../../domain/permissions'
 import type { Dashboard } from '../../domain/types'
@@ -22,8 +25,8 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 }
 
 const UPCOMING = [
-  { title: 'Dépenses, immobilisations, caisse', phase: 4 },
   { title: 'Rapports PDF / Excel', phase: 5 },
+  { title: 'Hors connexion, application installable', phase: 6 },
 ]
 
 export function DashboardPage() {
@@ -80,6 +83,21 @@ export function DashboardPage() {
       </Card>
 
       {isDriver && own.data && <LedgerView data={own.data} canCollect={false} />}
+
+      {data.alerts.length > 0 && (
+        <Card title={`Échéances (${data.alerts.length})`} action={<Link to="/echeances" className="text-sm font-medium text-brand">Tout voir</Link>}>
+          <ul className="divide-y divide-line">
+            {data.alerts.slice(0, 4).map((r) => (
+              <li key={r.id}>
+                <Link to={`/engins/${r.vehicleId}`} className="flex items-center justify-between gap-3 py-2 hover:bg-surface-2">
+                  <span className="min-w-0 truncate font-medium">{reminderName(r)} · {r.vehicleName}</span>
+                  <ReminderPill r={r} today={data.date} />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {!isDriver && data.debtors.length > 0 && (
         <Card title="Plus grosses dettes" action={<Link to="/versements" className="text-sm font-medium text-brand">Tout voir</Link>}>
@@ -163,7 +181,14 @@ export function DashboardPage() {
             <Stat label="Dépenses"><Money amount={data.month.expenses} currency={c} /></Stat>
             <Stat label="Bénéfice réel"><Money amount={data.month.profit} currency={c} /></Stat>
           </div>
-          <p className="mt-2 text-xs text-ink-soft">Les dépenses seront suivies à partir de la phase 4.</p>
+          {data.cash && (
+            <Link to="/caisse" className="mt-2 flex items-center justify-between rounded-xl bg-surface-2 p-3 text-sm hover:ring-2 hover:ring-brand/30">
+              <span className="text-ink-soft">Caisse</span>
+              <span className="font-semibold tabular-nums">
+                {formatMoney(data.cash.CDF, 'CDF')} · {formatMoney(data.cash.USD, 'USD')}
+              </span>
+            </Link>
+          )}
         </Card>
       )}
 

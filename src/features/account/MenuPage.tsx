@@ -4,6 +4,10 @@ import { Button, Card } from '../../components/ui'
 import { can, roleLabel, type Permission } from '../../domain/permissions'
 
 const ENTRIES: { to: string; label: string; hint: string; perm?: Permission }[] = [
+  { to: '/depenses', label: 'Dépenses', hint: 'Carburant, réparations, taxes…', perm: 'expenses.manage' },
+  { to: '/caisse', label: 'Caisse', hint: 'Solde, retraits et apports', perm: 'cash.manage' },
+  { to: '/echeances', label: 'Échéances', hint: 'Assurance, vignette, vidange', perm: 'vehicles.view' },
+  { to: '/journal', label: "Journal d'activité", hint: 'Qui a modifié quoi, et quand', perm: 'audit.view' },
   { to: '/parametres', label: 'Paramètres', hint: 'Devise, taux de change, jours de repos', perm: 'settings.view' },
   { to: '/utilisateurs', label: 'Équipe', hint: 'Comptes et rôles', perm: 'users.view' },
   { to: '/compte', label: 'Mon compte', hint: 'Mot de passe' },

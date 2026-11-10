@@ -12,6 +12,11 @@ import { MenuPage } from '../features/account/MenuPage'
 import { PaymentsPage } from '../features/payments/PaymentsPage'
 import { NewPaymentPage } from '../features/payments/NewPaymentPage'
 import { ReceiptPage } from '../features/payments/ReceiptPage'
+import { ExpensesPage } from '../features/expenses/ExpensesPage'
+import { ExpenseFormPage } from '../features/expenses/ExpenseFormPage'
+import { CashPage } from '../features/cash/CashPage'
+import { RemindersPage } from '../features/reminders/RemindersPage'
+import { AuditPage } from '../features/audit/AuditPage'
 import { VehiclesPage } from '../features/vehicles/VehiclesPage'
 import { VehicleFormPage } from '../features/vehicles/VehicleFormPage'
 import { VehicleDetailPage } from '../features/vehicles/VehicleDetailPage'
@@ -59,6 +64,12 @@ function Root() {
         <Route path="versements" element={<Guard perm="payments.view"><PaymentsPage /></Guard>} />
         <Route path="versements/nouveau" element={<Guard perm="payments.create"><NewPaymentPage /></Guard>} />
         <Route path="versements/:id" element={<ReceiptPage />} />
+        <Route path="depenses" element={<Guard perm="expenses.manage"><ExpensesPage /></Guard>} />
+        <Route path="depenses/nouvelle" element={<Guard perm="expenses.manage"><ExpenseFormPage /></Guard>} />
+        <Route path="depenses/:id" element={<Guard perm="expenses.manage"><ExpenseFormPage /></Guard>} />
+        <Route path="caisse" element={<Guard perm="cash.manage"><CashPage /></Guard>} />
+        <Route path="echeances" element={<Guard perm="vehicles.view"><RemindersPage /></Guard>} />
+        <Route path="journal" element={<Guard perm="audit.view"><AuditPage /></Guard>} />
         <Route path="compte" element={<AccountPage />} />
         <Route path="menu" element={<MenuPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
