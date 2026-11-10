@@ -15,6 +15,7 @@ require __DIR__ . '/routes/users.php';
 require __DIR__ . '/routes/vehicles.php';
 require __DIR__ . '/routes/drivers.php';
 require __DIR__ . '/routes/payments.php';
+require __DIR__ . '/routes/finance.php';
 require __DIR__ . '/routes/dashboard.php';
 
 header('X-Content-Type-Options: nosniff');
@@ -61,6 +62,25 @@ $routes = [
     ['POST', '/payments', 'payments_create'],
     ['GET', '/payments/{id}', 'payments_get'],
     ['POST', '/payments/{id}/cancel', 'payments_cancel'],
+    ['GET', '/expenses', 'expenses_list'],
+    ['POST', '/expenses', 'expenses_create'],
+    ['PUT', '/expenses/{id}', 'expenses_update'],
+    ['POST', '/expenses/{id}/cancel', 'expenses_cancel'],
+    ['GET', '/cash', 'cash_get'],
+    ['POST', '/cash/movements', 'cash_movement_create'],
+    ['PUT', '/cash/movements/{id}', 'cash_movement_update'],
+    ['POST', '/cash/movements/{id}/cancel', 'cash_movement_cancel'],
+    ['GET', '/vehicles/{id}/breakdowns', 'vehicles_breakdowns'],
+    ['POST', '/vehicles/{id}/breakdowns', 'breakdowns_create'],
+    ['PUT', '/breakdowns/{id}', 'breakdowns_update'],
+    ['POST', '/breakdowns/{id}/cancel', 'breakdowns_cancel'],
+    ['GET', '/vehicles/{id}/finance', 'vehicles_finance'],
+    ['GET', '/reminders', 'reminders_list'],
+    ['POST', '/vehicles/{id}/reminders', 'reminders_create'],
+    ['PUT', '/reminders/{id}', 'reminders_update'],
+    ['POST', '/reminders/{id}/done', 'reminders_done'],
+    ['POST', '/reminders/{id}/cancel', 'reminders_cancel'],
+    ['GET', '/audit', 'audit_list'],
     ['GET', '/dashboard', 'dashboard_get'],
 ];
 

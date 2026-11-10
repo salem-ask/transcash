@@ -106,11 +106,6 @@
       "admin",
       "accountant"
     ],
-    "cash.close": [
-      "super_admin",
-      "admin",
-      "accountant"
-    ],
     "reports.view": [
       "super_admin",
       "admin",

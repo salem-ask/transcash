@@ -52,6 +52,20 @@ function load_marks(array $vehicleIds, string $from, string $to): array
     foreach ($rows as $m) {
         $out[$m['vehicle_id'] . '|' . $m['day']] = $m;
     }
+    // Immobilisations : chaque jour devient « panne », sauf si une marque explicite existe déjà ce jour-là
+    $breakdowns = query(
+        "SELECT * FROM breakdowns WHERE vehicle_id IN ($in) AND deleted_at IS NULL AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)",
+        [...array_values($vehicleIds), $to, $from]
+    )->fetchAll();
+    foreach ($breakdowns as $b) {
+        $end = ($b['end_date'] !== null && $b['end_date'] < $to) ? $b['end_date'] : $to;
+        for ($d = max($b['start_date'], $from); $d <= $end; $d = add_days($d, 1)) {
+            $key = $b['vehicle_id'] . '|' . $d;
+            if (!isset($out[$key])) {
+                $out[$key] = ['kind' => 'breakdown', 'amount' => null, 'currency' => null, 'reason' => $b['reason'], 'breakdown_id' => $b['id']];
+            }
+        }
+    }
     return $out;
 }
 

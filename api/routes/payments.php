@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 // Versements, grand livre des chauffeurs, journées marquées (repos / panne / montant exceptionnel).
 
-const PAYMENT_METHODS = ['cash', 'mobile_money', 'bank'];
+const PAYMENT_METHODS = ['cash', 'mobile_money', 'bank']; // driver_expense : réservé aux dépenses payées par le chauffeur
 const ADVANCE_DAYS = 31; // jours à venir qu'on peut payer d'avance
 
 /** Le chauffeur connecté (rôle chauffeur) n'accède qu'à sa propre fiche. */
@@ -129,33 +129,60 @@ function payments_create(): array
 {
     $u = require_permission('payments.create');
     $d = body();
-    $id = (string)($d['id'] ?? '');
-    if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id)) {
-        throw new HttpError(422, 'Identifiant de versement invalide');
+    $method = (string)($d['method'] ?? '');
+    if (!in_array($method, PAYMENT_METHODS, true)) {
+        throw new HttpError(422, 'Choisissez le mode de paiement : espèces, Mobile Money ou banque');
     }
-    $existing = query('SELECT owner_id FROM payments WHERE id = ?', [$id])->fetchColumn();
-    if ($existing !== false) {
-        if ($existing !== $u['owner_id']) {
-            throw new HttpError(409, 'Identifiant déjà utilisé');
-        }
-        return payment_detail($u['owner_id'], $id);
+    $existing = existing_payment($u, (string)($d['id'] ?? ''));
+    if ($existing) {
+        return $existing;
     }
+    db()->beginTransaction();
+    try {
+        $id = record_payment($u, $d, $method);
+        db()->commit();
+    } catch (Throwable $e) {
+        db()->rollBack();
+        throw $e;
+    }
+    return payment_detail($u['owner_id'], $id);
+}
 
+/** Si ce versement (même id généré par l'appareil) existe déjà, le renvoie : pas de doublon. */
+function existing_payment(array $u, string $id): ?array
+{
+    if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id)) {
+        throw new HttpError(422, 'Identifiant invalide');
+    }
+    $owner = query('SELECT owner_id FROM payments WHERE id = ?', [$id])->fetchColumn();
+    if ($owner === false) {
+        return null;
+    }
+    if ($owner !== $u['owner_id']) {
+        throw new HttpError(409, 'Identifiant déjà utilisé');
+    }
+    return payment_detail($u['owner_id'], $id);
+}
+
+/**
+ * Enregistre un versement (à appeler DANS une transaction). Retourne son id.
+ * $method : cash | mobile_money | bank, ou driver_expense (dépense payée par le chauffeur, sans entrée en caisse).
+ */
+function record_payment(array $u, array $d, string $method): string
+{
+    $id = (string)$d['id'];
     $kind = ($d['kind'] ?? '') === 'extra' ? 'extra' : 'daily';
     $amount = (int)($d['amount'] ?? 0);
     if (!is_int($d['amount'] ?? null) || $amount <= 0 || $amount > MAX_AMOUNT) {
         throw new HttpError(422, 'Montant invalide');
     }
     $currency = valid_currency($d['currency'] ?? '');
-    $method = (string)($d['method'] ?? '');
-    if (!in_array($method, PAYMENT_METHODS, true)) {
-        throw new HttpError(422, 'Choisissez le mode de paiement : espèces, Mobile Money ou banque');
-    }
     $s = load_settings($u['owner_id']);
     $today = today_for($s['timezone']);
     $paidOn = valid_date($d['paidOn'] ?? $today, 'Date du versement');
     if ($paidOn > $today) {
         throw new HttpError(422, "La date de réception ne peut pas être dans le futur");
+
     }
     $note = optional_string($d, 'note', 255);
     if ($kind === 'extra' && $note === null) {
@@ -165,8 +192,7 @@ function payments_create(): array
     $rateRow = effective_rate($u['owner_id'], $s['rate_mode'], false);
     $rate = $rateRow ? (float)$rateRow['rate'] : null;
 
-    db()->beginTransaction();
-    try {
+    {
         $driver = query(
             'SELECT * FROM drivers WHERE id = ? AND owner_id = ? AND deleted_at IS NULL FOR UPDATE',
             [(string)($d['driverId'] ?? ''), $u['owner_id']]
@@ -236,12 +262,8 @@ function payments_create(): array
             'receipt' => $no, 'driver' => $driver['name'], 'kind' => $kind, 'amount' => $amount, 'currency' => $currency,
             'method' => $method, 'paidOn' => $paidOn, 'days' => array_column($allocations, 'date'),
         ]);
-        db()->commit();
-    } catch (Throwable $e) {
-        db()->rollBack();
-        throw $e;
     }
-    return payment_detail($u['owner_id'], $id);
+    return $id;
 }
 
 /** Annule un versement (motif obligatoire) : les journées qu'il payait redeviennent dues. */
@@ -304,6 +326,12 @@ function vehicles_mark_day(string $id): array
         // Nouveau montant attendu ce jour-là
         $v['amounts'] = query('SELECT amount, currency, effective_from FROM vehicle_amounts WHERE vehicle_id = ? ORDER BY effective_from', [$id])->fetchAll();
         $newMark = $kind === 'clear' ? null : ['kind' => $kind, 'amount' => $amount, 'currency' => $currency];
+        if ($kind === 'clear' && query(
+            'SELECT 1 FROM breakdowns WHERE vehicle_id = ? AND deleted_at IS NULL AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)',
+            [$id, $date, $date]
+        )->fetchColumn()) {
+            $newMark = ['kind' => 'breakdown', 'amount' => null, 'currency' => null];
+        }
         $e = expected_for($v, $date, json_decode($s['rest_weekdays'], true) ?: [], $newMark);
         $paid = (int)query(
             'SELECT COALESCE(SUM(a.amount), 0) FROM payment_allocations a JOIN payments p ON p.id = a.payment_id AND p.cancelled_at IS NULL
@@ -383,7 +411,8 @@ function vehicles_days(string $id): array
             'date' => $d, 'driver' => $driver, 'kind' => $driver || $e['kind'] !== 'due' ? $e['kind'] : 'no_driver',
             'expected' => $expected, 'currency' => $e['currency'], 'paid' => $p, 'remaining' => $remaining,
             'state' => pay_state($expected, $p, $remaining),
-            'mark' => $mark ? ['kind' => $mark['kind'], 'amount' => $mark['amount'] === null ? null : (int)$mark['amount'], 'currency' => $mark['currency'], 'reason' => $mark['reason']] : null,
+            'breakdownId' => $mark['breakdown_id'] ?? null,
+            'mark' => ($mark && !isset($mark['breakdown_id'])) ? ['kind' => $mark['kind'], 'amount' => $mark['amount'] === null ? null : (int)$mark['amount'], 'currency' => $mark['currency'], 'reason' => $mark['reason']] : null,
         ];
     }
     return ['vehicleId' => $id, 'today' => $today, 'days' => array_reverse($days)];

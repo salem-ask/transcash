@@ -13,12 +13,13 @@ if (!$configFile || !is_file($configFile)) {
 $config = require $configFile;
 $c = $config['db'];
 $pdo = new PDO("mysql:host={$c['host']};dbname={$c['name']};charset=utf8mb4", $c['user'], $c['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-foreach (['payment_allocations', 'payments', 'day_marks', 'assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
+foreach (['reminders', 'cash_movements', 'expenses', 'breakdowns', 'payment_allocations', 'payments', 'day_marks', 'assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
     $pdo->exec("DROP TABLE IF EXISTS $t");
 }
 $pdo->exec((string)file_get_contents(__DIR__ . '/../schema.sql'));
 $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/002_engins_chauffeurs.sql')); // rejouable sans erreur
 $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/003_versements_dettes.sql'));
+$pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/004_depenses_caisse_pannes.sql'));
 
 $port = 8765;
 $root = realpath(__DIR__ . '/..');
@@ -332,6 +333,101 @@ check('journal du jour (4 versements, dont 1 annulé)', $s === 200 && count($r['
 check('autre propriétaire : grand livre inaccessible', $s === 404);
 [$s] = call('autre', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 100, 'currency' => 'CDF', 'method' => 'cash', 'days' => [['date' => $day(0), 'vehicleId' => $bus]]]);
 check('autre propriétaire : versement impossible', $s === 404);
+
+echo "Phase 4 : dépenses\n";
+// Situation d'Eric avant : dettes 112 000 FC (voir ci-dessus)
+[$s, $r] = call('gestion', 'POST', '/auth/login', ['login' => 'gestion@test.cd', 'password' => 'x']);
+[$s, $r] = call('boss', 'POST', '/users', ['name' => 'Gestion', 'login' => 'gestion@test.cd', 'role' => 'manager', 'password' => 'motdepasse5']);
+call('gestion', 'POST', '/auth/login', ['login' => 'gestion@test.cd', 'password' => 'motdepasse5']);
+$e1 = $uuid();
+[$s, $r] = call('gestion', 'POST', '/expenses', ['id' => $e1, 'vehicleId' => $bus, 'category' => 'fuel', 'amount' => 30000, 'currency' => 'CDF', 'spentOn' => $day(0), 'note' => 'Plein']);
+check('dépense de caisse (gestionnaire)', $s === 200 && $r['paidBy'] === 'cash' && $r['vehicleName'] === 'Bus', $r);
+[$s] = call('gestion', 'POST', '/expenses', ['id' => $e1, 'vehicleId' => $bus, 'category' => 'fuel', 'amount' => 30000, 'currency' => 'CDF']);
+check('renvoi de la même dépense : pas de doublon', $s === 200 && (int)$pdo->query('SELECT COUNT(*) FROM expenses')->fetchColumn() === 1);
+[$s, $r] = call('gestion', 'POST', '/expenses', ['id' => $uuid(), 'category' => 'fuel', 'amount' => 30000, 'currency' => 'CDF', 'spentOn' => $day(1)]);
+check('dépense datée dans le futur refusée', $s === 422, $r);
+[$s, $r] = call('gestion', 'POST', '/expenses', ['id' => $uuid(), 'category' => 'café', 'amount' => 30000, 'currency' => 'CDF']);
+check('catégorie inconnue refusée', $s === 422, $r);
+[$s, $r] = call('gestion', 'PUT', "/expenses/$e1", ['vehicleId' => $bus, 'category' => 'fuel', 'amount' => 35000, 'currency' => 'CDF', 'spentOn' => $day(0), 'note' => 'Plein complet']);
+check('modification tracée', $s === 200 && $r['amount'] === 35000
+    && (int)$pdo->query("SELECT COUNT(*) FROM audit_log WHERE entity = 'expense' AND action = 'update'")->fetchColumn() === 1, $r);
+
+// Dépense payée par le chauffeur : compte comme versement sur J-1 (20 000 FC exceptionnel)
+$e2 = $uuid();
+[$s, $r] = call('gestion', 'POST', '/expenses', ['id' => $e2, 'category' => 'repair', 'amount' => 20000, 'currency' => 'CDF', 'spentOn' => $day(0),
+    'paidBy' => 'driver', 'driverId' => $eric, 'days' => [['date' => $day(-1), 'vehicleId' => $bus]], 'note' => 'Vulcanisateur']);
+check('dépense payée par le chauffeur', $s === 200 && $r['paidBy'] === 'driver' && $r['paymentId'] !== null && $r['vehicleId'] === $bus, $r);
+$e2payment = $r['paymentId'];
+[$s, $r] = call('boss', 'GET', "/drivers/$eric/ledger");
+check('… sa dette baisse de 20 000 FC', ($r['summary']['arrears']['CDF'] ?? 0) === 92000, $r['summary']);
+[$s, $r] = call('gestion', 'PUT', "/expenses/$e2", ['category' => 'repair', 'amount' => 25000, 'currency' => 'CDF']);
+check('… son montant ne se modifie pas (annuler et refaire)', $s === 422, $r);
+[$s, $r] = call('gestion', 'POST', "/expenses/$e2/cancel", ['reason' => 'Facture perdue']);
+[$s2, $r2] = call('boss', 'GET', "/drivers/$eric/ledger");
+check('annulation : versement lié annulé, dette rétablie', $s === 200 && $r['cancelled'] && ($r2['summary']['arrears']['CDF'] ?? 0) === 112000
+    && $pdo->query("SELECT cancelled_at IS NOT NULL FROM payments WHERE id = '$e2payment'")->fetchColumn() == 1, [$r, $r2['summary']]);
+
+echo "Caisse\n";
+[$s] = call('gestion', 'GET', '/cash');
+check('le gestionnaire n\'accède pas à la caisse', $s === 403);
+[$s, $r] = call('compta', 'GET', '/cash');
+// Entrées du jour non annulées : 2000 USD + 50 000 + 10 000 (exceptionnel) FC ; sorties : 35 000 FC. Pas le versement « dépense chauffeur ».
+check('solde de caisse', $s === 200 && $r['balance']['CDF'] === 25000 && $r['balance']['USD'] === 2000, $r['balance'] ?? $r);
+$w = $uuid();
+[$s, $r] = call('compta', 'POST', '/cash/movements', ['id' => $w, 'kind' => 'withdrawal', 'amount' => 20000, 'currency' => 'CDF', 'note' => 'Retrait patron']);
+check('retrait du propriétaire', $s === 200 && $r['balance']['CDF'] === 5000, $r['balance'] ?? $r);
+[$s, $r] = call('compta', 'PUT', "/cash/movements/$w", ['kind' => 'withdrawal', 'amount' => 15000, 'currency' => 'CDF']);
+check('retrait modifié (tracé)', $s === 200 && $r['balance']['CDF'] === 10000, $r['balance'] ?? $r);
+[$s, $r] = call('compta', 'POST', '/cash/movements', ['id' => $uuid(), 'kind' => 'deposit', 'amount' => 100, 'currency' => 'USD', 'note' => 'Solde initial']);
+check('apport', $s === 200 && $r['balance']['USD'] === 2100, $r['balance'] ?? $r);
+[$s, $r] = call('compta', 'POST', "/cash/movements/$w/cancel", ['reason' => 'Doublon']);
+check('retrait annulé', $s === 200 && $r['balance']['CDF'] === 25000, $r['balance'] ?? $r);
+
+echo "Immobilisations\n";
+[$s, $r] = call('gestion', 'POST', "/vehicles/$bus/breakdowns", ['startDate' => $day(-5), 'endDate' => $day(-4), 'reason' => 'Moteur']);
+check('immobilisation refusée sur des jours déjà payés', $s === 422 && str_contains($r['error'], 'versement'), $r);
+[$s, $r] = call('gestion', 'POST', "/vehicles/$bus/breakdowns", ['startDate' => $day(2), 'reason' => 'Boîte de vitesses']);
+check('immobilisation en cours déclarée', $s === 200 && $r['breakdowns'][0]['endDate'] === null, $r);
+$bk = $r['breakdowns'][0]['id'];
+[$s, $r] = call('boss', 'GET', "/drivers/$eric/ledger");
+$kinds = array_column(array_filter($r['days'], fn($d) => $d['date'] >= $day(2) && $d['date'] <= $day(4)), 'kind');
+check('aucun versement exigé pendant l\'immobilisation', $kinds === ['breakdown', 'breakdown', 'breakdown'], $kinds);
+[$s, $r] = call('gestion', 'POST', "/vehicles/$bus/breakdowns", ['startDate' => $day(3), 'endDate' => $day(5), 'reason' => 'x']);
+check('chevauchement refusé', $s === 422, $r);
+[$s, $r] = call('gestion', 'PUT', "/breakdowns/$bk", ['endDate' => $day(3)]);
+check('remise en service (date de fin)', $s === 200 && $r['breakdowns'][0]['endDate'] === $day(3), $r);
+[$s, $r] = call('gestion', 'POST', '/expenses', ['id' => $uuid(), 'category' => 'repair', 'amount' => 150, 'currency' => 'USD', 'breakdownId' => $bk]);
+[$s2, $r2] = call('gestion', 'GET', "/vehicles/$bus/breakdowns");
+check('réparation liée à l\'immobilisation', $s === 200 && $r['vehicleId'] === $bus && ($r2['breakdowns'][0]['expenses']['USD'] ?? 0) === 150, [$r, $r2]);
+[$s, $r] = call('gestion', 'POST', "/breakdowns/$bk/cancel", ['reason' => 'Erreur']);
+check('immobilisation annulée', $s === 200 && $r['breakdowns'][0]['cancelled'] === true, $r);
+
+echo "Échéances\n";
+[$s, $r] = call('gestion', 'POST', "/vehicles/$bus/reminders", ['kind' => 'insurance', 'dueDate' => $day(3), 'notifyDays' => 7]);
+check('échéance assurance (bientôt)', $s === 200 && $r['reminders'][0]['state'] === 'soon', $r);
+$rem = $r['reminders'][0]['id'];
+[$s, $r] = call('gestion', 'POST', "/vehicles/$bus/reminders", ['kind' => 'oil_change', 'dueDate' => $day(-2)]);
+check('vidange dépassée', $s === 200 && $r['reminders'][0]['state'] === 'overdue', $r);
+[$s, $r] = call('gestion', 'POST', "/vehicles/$bus/reminders", ['kind' => 'other', 'dueDate' => $day(30)]);
+check('« autre » sans nom refusé', $s === 422, $r);
+[$s, $r] = call('gestion', 'POST', "/reminders/$rem/done", ['nextDueDate' => $day(365)]);
+$states = array_column($r['reminders'], 'state');
+check('renouvelée : faite + prochaine créée', $s === 200 && in_array('done', $states, true) && count($r['reminders']) === 3, $r);
+[$s, $r] = call('boss', 'GET', '/dashboard');
+check('tableau de bord : alertes, dépenses du mois, caisse', $s === 200 && count($r['alerts']) === 1 && $r['alerts'][0]['kind'] === 'oil_change'
+    && $r['month']['expenses'] > 0 && $r['cash'] !== null, ['alerts' => $r['alerts'] ?? null, 'month' => $r['month'] ?? null, 'cash' => $r['cash'] ?? null]);
+[$s, $r] = call('boss', 'GET', "/vehicles/$bus/finance");
+check('bilan de l\'engin', $s === 200 && $r['revenue'] > 0 && $r['expenses'] > 0 && $r['profit'] === $r['revenue'] - $r['expenses'], $r);
+
+echo "Journal d'activité\n";
+[$s, $r] = call('boss', 'GET', '/audit?limit=5');
+check('le super admin consulte le journal', $s === 200 && count($r['entries']) === 5 && $r['entries'][0]['userName'] !== null, $r);
+[$s] = call('compta', 'GET', '/audit');
+check('le comptable ne le consulte pas', $s === 403);
+[$s] = call('autre', 'GET', "/vehicles/$bus/breakdowns");
+check('autre propriétaire : immobilisations inaccessibles', $s === 404);
+[$s, $r] = call('autre', 'GET', '/cash');
+check('autre propriétaire : sa propre caisse est vide', $s === 200 && $r['balance'] === ['CDF' => 0, 'USD' => 0], $r);
 
 echo $failures === 0 ? "\nTous les tests API passent.\n" : "\n$failures test(s) en échec.\n";
 exit($failures === 0 ? 0 : 1);

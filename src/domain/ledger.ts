@@ -53,6 +53,31 @@ export interface Allocation {
   amount: number
 }
 
+/** Immobilisation d'un engin sur plusieurs jours (end null = en cours). */
+export interface Breakdown {
+  id: string
+  vehicleId: string
+  startDate: string
+  endDate: string | null
+  reason: string
+}
+
+/**
+ * Transforme les immobilisations en marques « panne » jour par jour, entre from et to.
+ * Une marque posée explicitement sur un jour reste prioritaire (ex. « demi-journée » le jour de la réparation).
+ */
+export function withBreakdowns(marks: DayMark[], breakdowns: Breakdown[], from: string, to: string): DayMark[] {
+  const explicit = new Set(marks.map((m) => `${m.vehicleId}|${m.date}`))
+  const out = [...marks]
+  for (const b of breakdowns) {
+    const end = b.endDate && b.endDate < to ? b.endDate : to
+    for (let d = b.startDate > from ? b.startDate : from; d <= end; d = addDays(d, 1)) {
+      if (!explicit.has(`${b.vehicleId}|${d}`)) out.push({ vehicleId: b.vehicleId, date: d, kind: 'breakdown', amount: null, currency: null, reason: b.reason })
+    }
+  }
+  return out
+}
+
 /** Situation d'un jour donné pour un engin, avant paiement. */
 export function expectedFor(
   v: LedgerVehicle,

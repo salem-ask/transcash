@@ -48,9 +48,11 @@ function today_lines(array $u, array $s, string $today): array
 }
 
 /** Argent reçu (versements non annulés) sur une période, converti au taux enregistré avec chaque versement. */
-function received_between(string $ownerId, string $from, string $to, string $base, ?string $driverId = null): ?int
+/** $includeDriverExpenses : compter aussi les dépenses payées par les chauffeurs (revenu, mais pas d'argent en caisse). */
+function received_between(string $ownerId, string $from, string $to, string $base, ?string $driverId = null, bool $includeDriverExpenses = false): ?int
 {
-    $sql = 'SELECT amount, currency, rate FROM payments WHERE owner_id = ? AND paid_on BETWEEN ? AND ? AND cancelled_at IS NULL';
+    $sql = 'SELECT amount, currency, rate FROM payments WHERE owner_id = ? AND paid_on BETWEEN ? AND ? AND cancelled_at IS NULL'
+        . ($includeDriverExpenses ? '' : " AND method <> 'driver_expense'");
     $params = [$ownerId, $from, $to];
     if ($driverId) {
         $sql .= ' AND driver_id = ?';
@@ -138,7 +140,22 @@ function dashboard_get(): array
     $count = fn(string $st) => count(array_filter($lines, fn($l) => $l['status'] === $st));
     $monthStart = substr($today, 0, 8) . '01';
     $ownDriver = $u['role'] === 'driver' ? (query('SELECT id FROM drivers WHERE user_id = ?', [$u['id']])->fetchColumn() ?: '-') : null;
-    $receivedMonth = received_between($u['owner_id'], $monthStart, $today, $base, $ownDriver);
+    $receivedMonth = received_between($u['owner_id'], $monthStart, $today, $base, $ownDriver, true);
+    $expensesMonth = 0;
+    if (!$ownDriver) {
+        foreach (query('SELECT amount, currency, rate FROM expenses WHERE owner_id = ? AND cancelled_at IS NULL AND spent_on BETWEEN ? AND ?', [$u['owner_id'], $monthStart, $today])->fetchAll() as $e) {
+            $v = convert_amount((int)$e['amount'], $e['currency'], $base, $e['rate'] !== null ? (float)$e['rate'] : $rate);
+            $v === null ? $missingRate = true : $expensesMonth += $v;
+        }
+    }
+    $alerts = [];
+    if (!$ownDriver) {
+        foreach (reminders_query($u, null)['reminders'] as $r) {
+            if ($r['state'] === 'overdue' || $r['state'] === 'soon') {
+                $alerts[] = $r;
+            }
+        }
+    }
     return [
         'currency' => $base,
         'date' => $today,
@@ -149,7 +166,9 @@ function dashboard_get(): array
             'debt' => $sumLines('remaining'),
             'received' => received_between($u['owner_id'], $today, $today, $base, $ownDriver) ?? 0,
         ],
-        'month' => ['expected' => 0, 'paid' => $receivedMonth ?? 0, 'expenses' => 0, 'profit' => $receivedMonth ?? 0],
+        'month' => ['expected' => 0, 'paid' => $receivedMonth ?? 0, 'expenses' => $expensesMonth, 'profit' => ($receivedMonth ?? 0) - $expensesMonth],
+        'cash' => role_can($u['role'], 'cash.manage') ? balance_of(cash_entries($u['owner_id'], null, $today)) : null,
+        'alerts' => $alerts,
         'vehicles' => [
             'total' => count($lines),
             'working' => $count('due'),
