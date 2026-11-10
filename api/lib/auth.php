@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 // Sessions, utilisateur courant et contrôle des droits.
 
-const LOGIN_MAX_ATTEMPTS = 8;      // échecs autorisés…
+const LOGIN_MAX_ATTEMPTS = 8;      // échecs autorisés pour un même identifiant…
+const LOGIN_MAX_PER_IP = 50;       // …et pour une même adresse IP (souvent partagée sur les réseaux mobiles)
 const LOGIN_WINDOW_MINUTES = 15;   // …sur cette durée
 
 function start_session(): void
@@ -94,11 +95,9 @@ function client_ip(): string
 function too_many_attempts(string $login): bool
 {
     $since = gmdate('Y-m-d H:i:s', time() - LOGIN_WINDOW_MINUTES * 60);
-    $n = (int)query(
-        'SELECT COUNT(*) FROM login_attempts WHERE (login = ? OR ip = ?) AND created_at > ?',
-        [$login, client_ip(), $since]
-    )->fetchColumn();
-    return $n >= LOGIN_MAX_ATTEMPTS;
+    $byLogin = (int)query('SELECT COUNT(*) FROM login_attempts WHERE login = ? AND created_at > ?', [$login, $since])->fetchColumn();
+    $byIp = (int)query('SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND created_at > ?', [client_ip(), $since])->fetchColumn();
+    return $byLogin >= LOGIN_MAX_ATTEMPTS || $byIp >= LOGIN_MAX_PER_IP;
 }
 
 function record_failed_attempt(string $login): void
