@@ -11,6 +11,7 @@ import type { Driver, VehicleDetail } from '../../domain/types'
 import { WEEKDAYS } from '../../lib/format'
 import { errorText, useLoad } from '../../lib/useLoad'
 import { VehicleDaysCard } from './VehicleDaysCard'
+import { BreakdownsCard, RemindersCard, VehicleFinanceCard } from './VehicleOpsCards'
 
 type Panel = null | 'assign' | 'unassign' | 'retire'
 
@@ -26,6 +27,8 @@ export function VehicleDetailPage() {
   const [date, setDate] = useState(today)
   const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  // Incrémenté quand une immobilisation change : les journées sont rechargées
+  const [version, setVersion] = useState(0)
 
   if (error) return <Alert>{error}</Alert>
   if (!data) return <Spinner />
@@ -173,7 +176,12 @@ export function VehicleDetailPage() {
         )}
       </Card>
 
-      {v.status === 'active' && <VehicleDaysCard vehicle={v} canMark={can(session?.user?.role, 'days.mark')} />}
+      <VehicleFinanceCard vehicle={v} canExpense={can(session?.user?.role, 'expenses.manage')} />
+      {v.status === 'active' && (
+        <BreakdownsCard vehicle={v} today={today} canEdit={can(session?.user?.role, 'days.mark')} canExpense={can(session?.user?.role, 'expenses.manage')} onChange={() => setVersion((n) => n + 1)} />
+      )}
+      {v.status === 'active' && <VehicleDaysCard key={version} vehicle={v} canMark={can(session?.user?.role, 'days.mark')} />}
+      {v.status === 'active' && <RemindersCard vehicle={v} canEdit={canManage} />}
 
       <Card title="Historique des chauffeurs">
         <AssignmentHistory items={assignments} show="driver" today={today} />
