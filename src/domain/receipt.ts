@@ -6,6 +6,7 @@ export const METHOD_LABEL: Record<PaymentMethod, string> = {
   cash: 'Espèces',
   mobile_money: 'Mobile Money',
   bank: 'Banque',
+  driver_expense: 'Dépense payée par le chauffeur',
 }
 
 const shortDate = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`

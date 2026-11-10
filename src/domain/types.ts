@@ -1,4 +1,5 @@
 import type { DayKind, DayMarkKind, LedgerDay, PayState, Totals } from './ledger'
+import type { CashDirection, ExpenseCategory, ReminderKind, ReminderState } from './finance'
 
 // Types partagés entre l'interface et les sources de données (API PHP ou démo).
 
@@ -90,11 +91,16 @@ export interface Dashboard {
   lines: DashboardLine[]
   totalDebt: number
   debtors: Debtor[]
+  /** Solde de caisse (si l'utilisateur y a accès) */
+  cash: Record<Currency, number> | null
+  /** Échéances dépassées ou proches */
+  alerts: Reminder[]
 }
 
 // ---------- Versements et dettes ----------
 
-export type PaymentMethod = 'cash' | 'mobile_money' | 'bank'
+/** driver_expense : dépense payée par le chauffeur, comptée comme versement (n'entre pas en caisse) */
+export type PaymentMethod = 'cash' | 'mobile_money' | 'bank' | 'driver_expense'
 export type PaymentKind = 'daily' | 'extra'
 
 export interface Payment {
@@ -284,4 +290,160 @@ export interface UserPatch {
   role?: Role
   active?: boolean
   password?: string
+}
+
+// ---------- Phase 4 : dépenses, caisse, immobilisations, échéances, journal ----------
+
+export interface Expense {
+  id: string
+  vehicleId: string | null
+  vehicleName: string | null
+  breakdownId: string | null
+  category: ExpenseCategory
+  amount: number
+  currency: Currency
+  spentOn: string
+  /** cash : sortie de caisse ; driver : payée par le chauffeur (comptée comme versement) */
+  paidBy: 'cash' | 'driver'
+  driverId: string | null
+  driverName: string | null
+  paymentId: string | null
+  supplier: string | null
+  note: string | null
+  rate: number | null
+  createdByName: string | null
+  createdAt: string
+  cancelled: boolean
+  cancelReason: string | null
+}
+
+export interface ExpenseInput {
+  id: string
+  vehicleId?: string | null
+  breakdownId?: string | null
+  category: ExpenseCategory
+  amount: number
+  currency: Currency
+  spentOn?: string
+  supplier?: string
+  note?: string
+  paidBy?: 'cash' | 'driver'
+  driverId?: string
+  days?: { date: string; vehicleId: string }[]
+}
+
+export interface ExpenseList {
+  from: string
+  to: string
+  expenses: Expense[]
+  totals: Totals
+}
+
+export interface CashLine {
+  type: 'payment' | 'expense' | 'withdrawal' | 'deposit'
+  id: string
+  date: string
+  direction: CashDirection
+  amount: number
+  currency: Currency
+  label: string | null
+  method?: PaymentMethod
+  receiptNo?: number
+  category?: ExpenseCategory
+  note: string | null
+}
+
+export interface CashMovement {
+  id: string
+  kind: 'withdrawal' | 'deposit'
+  amount: number
+  currency: Currency
+  movedOn: string
+  note: string | null
+  createdByName: string | null
+  cancelled: boolean
+  cancelReason: string | null
+}
+
+export interface CashState {
+  from: string
+  to: string
+  balance: Record<Currency, number>
+  opening: Record<Currency, number>
+  totalIn: Record<Currency, number>
+  totalOut: Record<Currency, number>
+  entries: CashLine[]
+  movements: CashMovement[]
+}
+
+export interface MovementInput {
+  id: string
+  kind: 'withdrawal' | 'deposit'
+  amount: number
+  currency: Currency
+  movedOn?: string
+  note?: string
+}
+
+export interface VehicleBreakdown {
+  id: string
+  vehicleId: string
+  vehicleName: string | null
+  startDate: string
+  /** null = encore immobilisé */
+  endDate: string | null
+  reason: string
+  /** Réparations liées, par devise */
+  expenses: Totals
+  cancelled: boolean
+  cancelReason: string | null
+}
+
+export interface BreakdownInput {
+  startDate?: string
+  endDate?: string | null
+  reason?: string
+}
+
+export interface Reminder {
+  id: string
+  vehicleId: string
+  vehicleName: string | null
+  kind: ReminderKind
+  label: string | null
+  dueDate: string
+  notifyDays: number
+  notes: string | null
+  doneAt: string | null
+  state: ReminderState
+}
+
+export interface ReminderInput {
+  kind: ReminderKind
+  label?: string
+  dueDate: string
+  notifyDays: number
+  notes?: string
+}
+
+export interface VehicleFinance {
+  from: string
+  to: string
+  currency: Currency
+  /** null si un taux de change manque */
+  revenue: number | null
+  expenses: number | null
+  profit: number | null
+  currentBreakdown: VehicleBreakdown | null
+}
+
+export interface AuditEntry {
+  id: number
+  entity: string
+  entityId: string
+  action: string
+  userName: string | null
+  createdAt: string
+  oldValue: Record<string, unknown> | null
+  newValue: Record<string, unknown> | null
 }

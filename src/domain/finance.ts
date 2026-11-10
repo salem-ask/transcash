@@ -31,6 +31,9 @@ export const REMINDER_LABEL: Record<ReminderKind, string> = {
   other: 'Autre',
 }
 
+/** Nom affiché d'une échéance (« Autre » : son libellé). */
+export const reminderName = (r: { kind: ReminderKind; label: string | null }) => (r.kind === 'other' ? (r.label ?? 'Autre') : REMINDER_LABEL[r.kind])
+
 export type ReminderState = 'overdue' | 'soon' | 'later' | 'done'
 
 /** État d'une échéance : dépassée, bientôt (dans la fenêtre d'alerte), plus tard, ou faite. */

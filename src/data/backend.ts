@@ -1,4 +1,15 @@
 import type {
+  AuditEntry,
+  BreakdownInput,
+  CashState,
+  Expense,
+  ExpenseInput,
+  ExpenseList,
+  MovementInput,
+  Reminder,
+  ReminderInput,
+  VehicleBreakdown,
+  VehicleFinance,
   Dashboard,
   LedgerPayload,
   MarkDayInput,
@@ -69,6 +80,29 @@ export interface Backend {
   cancelPayment(id: string, reason: string): Promise<PaymentDetail>
   vehicleDays(vehicleId: string): Promise<VehicleDays>
   markDay(vehicleId: string, input: MarkDayInput): Promise<VehicleDays>
+
+  // Phase 4 : dépenses, caisse, immobilisations, échéances, journal
+  listExpenses(params: { from?: string; to?: string; vehicleId?: string }): Promise<ExpenseList>
+  getExpense(id: string): Promise<Expense>
+  createExpense(input: ExpenseInput): Promise<Expense>
+  updateExpense(id: string, input: ExpenseInput): Promise<Expense>
+  cancelExpense(id: string, reason: string): Promise<Expense>
+  getCash(from?: string, to?: string): Promise<CashState>
+  createMovement(input: MovementInput): Promise<CashState>
+  updateMovement(id: string, input: MovementInput): Promise<CashState>
+  cancelMovement(id: string, reason: string): Promise<CashState>
+  listBreakdowns(vehicleId: string): Promise<VehicleBreakdown[]>
+  createBreakdown(vehicleId: string, input: BreakdownInput): Promise<VehicleBreakdown[]>
+  updateBreakdown(id: string, input: BreakdownInput): Promise<VehicleBreakdown[]>
+  cancelBreakdown(id: string, reason: string): Promise<VehicleBreakdown[]>
+  /** Sans vehicleId : échéances à faire de tout le parc ; avec : toutes celles de l'engin */
+  listReminders(vehicleId?: string): Promise<{ today: string; reminders: Reminder[] }>
+  createReminder(vehicleId: string, input: ReminderInput): Promise<{ today: string; reminders: Reminder[] }>
+  updateReminder(id: string, input: ReminderInput): Promise<{ today: string; reminders: Reminder[] }>
+  doneReminder(id: string, nextDueDate?: string): Promise<{ today: string; reminders: Reminder[] }>
+  cancelReminder(id: string): Promise<{ today: string; reminders: Reminder[] }>
+  vehicleFinance(vehicleId: string): Promise<VehicleFinance>
+  auditLog(params: { limit?: number; before?: number }): Promise<AuditEntry[]>
 }
 
 /** Erreur lisible par l'utilisateur, avec le code HTTP correspondant. */

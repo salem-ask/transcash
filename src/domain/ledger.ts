@@ -223,3 +223,6 @@ export const DAY_KIND_LABEL: Record<DayKind, string> = {
   breakdown: 'Panne',
   not_started: 'Hors service',
 }
+
+/** Clé d'une journée d'un engin : « engin|AAAA-MM-JJ ». */
+export const dayKey = (d: { vehicleId: string; date: string }) => `${d.vehicleId}|${d.date}`
