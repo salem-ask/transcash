@@ -19,6 +19,7 @@ const NAV: NavItem[] = [
   { to: '/chauffeurs', label: 'Chauffeurs', icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8', perm: 'drivers.view' },
   { to: '/depenses', show: 'desktop', label: 'Dépenses', icon: 'M12 3v18M17 7.5C17 5.6 14.8 4 12 4S7 5.6 7 7.5 9.2 11 12 11s5 1.6 5 3.5S14.8 18 12 18s-5-1.6-5-3.5', perm: 'expenses.manage' },
   { to: '/caisse', show: 'desktop', label: 'Caisse', icon: 'M3 8h18v11H3zM3 8l2-4h14l2 4M12 12v3M9 12h6', perm: 'cash.manage' },
+  { to: '/rapports', show: 'desktop', label: 'Rapports', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2', perm: 'reports.view' },
   { to: '/echeances', show: 'desktop', label: 'Échéances', icon: 'M8 3v3M16 3v3M4 8h16M5 5h14v15H5zM12 12v4l2 1', perm: 'vehicles.view' },
   { to: '/journal', show: 'desktop', label: 'Journal', icon: 'M5 4h11l3 3v13H5zM9 9h6M9 13h6M9 17h4', perm: 'audit.view' },
   { to: '/menu', label: 'Menu', icon: 'M4 6h16M4 12h16M4 18h16', show: 'mobile' },

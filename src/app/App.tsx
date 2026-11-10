@@ -17,6 +17,7 @@ import { ExpenseFormPage } from '../features/expenses/ExpenseFormPage'
 import { CashPage } from '../features/cash/CashPage'
 import { RemindersPage } from '../features/reminders/RemindersPage'
 import { AuditPage } from '../features/audit/AuditPage'
+import { ReportsPage } from '../features/reports/ReportsPage'
 import { VehiclesPage } from '../features/vehicles/VehiclesPage'
 import { VehicleFormPage } from '../features/vehicles/VehicleFormPage'
 import { VehicleDetailPage } from '../features/vehicles/VehicleDetailPage'
@@ -69,6 +70,7 @@ function Root() {
         <Route path="depenses/:id" element={<Guard perm="expenses.manage"><ExpenseFormPage /></Guard>} />
         <Route path="caisse" element={<Guard perm="cash.manage"><CashPage /></Guard>} />
         <Route path="echeances" element={<Guard perm="vehicles.view"><RemindersPage /></Guard>} />
+        <Route path="rapports" element={<Guard perm="reports.view"><ReportsPage /></Guard>} />
         <Route path="journal" element={<Guard perm="audit.view"><AuditPage /></Guard>} />
         <Route path="compte" element={<AccountPage />} />
         <Route path="menu" element={<MenuPage />} />

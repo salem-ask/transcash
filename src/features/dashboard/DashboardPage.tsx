@@ -4,6 +4,7 @@ import { useSession } from '../../app/session'
 import { Money } from '../../components/Money'
 import { Alert, ButtonLink, Card, Spinner } from '../../components/ui'
 import { useLoad } from '../../lib/useLoad'
+import { buildReport, periodPresets } from '../../domain/report'
 import { DayStatePill, LedgerView } from '../payments/LedgerView'
 import { ReminderPill } from '../vehicles/VehicleOpsCards'
 import { reminderName } from '../../domain/finance'
@@ -24,10 +25,26 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
-const UPCOMING = [
-  { title: 'Rapports PDF / Excel', phase: 5 },
-  { title: 'Hors connexion, application installable', phase: 6 },
-]
+const UPCOMING = [{ title: 'Hors connexion, application installable', phase: 6 }]
+
+/** Cette semaine (lundi → aujourd'hui) : attendu, payé, recouvrement. */
+function WeekCard({ today }: { today: string }) {
+  const week = periodPresets(today)[0]
+  const { data } = useLoad(() => backend.reportData(week.from, week.to), [week.from])
+  if (!data) return null
+  const t = buildReport(data).totals
+  return (
+    <Card title="Cette semaine" action={<Link to="/rapports" className="text-sm font-medium text-brand">Rapports</Link>}>
+      <div className="grid grid-cols-3 gap-2">
+        <Stat label="Attendu"><Money amount={t.expected} currency={data.currency} /></Stat>
+        <Stat label="Payé"><Money amount={t.paid} currency={data.currency} /></Stat>
+        <Stat label="Recouvrement">
+          <span className="text-xl font-bold">{t.collectionRate === null ? '—' : `${Math.round(t.collectionRate * 100)} %`}</span>
+        </Stat>
+      </div>
+    </Card>
+  )
+}
 
 export function DashboardPage() {
   const { session, bundle } = useSession()
@@ -173,6 +190,8 @@ export function DashboardPage() {
           </>
         )}
       </Card>
+
+      {can(session?.user?.role, 'reports.view') && <WeekCard today={data.date} />}
 
       {!isDriver && (
         <Card title="Ce mois">
