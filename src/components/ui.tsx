@@ -1,5 +1,6 @@
 // Composants d'interface de base — gros boutons, pensés pour le doigt sur téléphone.
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import { Link } from 'react-router-dom'
 import { useId } from 'react'
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost'
@@ -126,5 +127,96 @@ export function Spinner({ label = 'Chargement…' }: { label?: string }) {
       <span className="size-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
       {label}
     </div>
+  )
+}
+
+export function TextArea({ label, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string }) {
+  const id = useId()
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-ink-soft">
+        {label}
+      </label>
+      <textarea
+        id={id}
+        rows={3}
+        {...props}
+        className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-base text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+      />
+    </div>
+  )
+}
+
+/** Choix exclusif en boutons (ex. CDF / USD). */
+export function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  label: string
+  value: T
+  options: { id: T; label: ReactNode }[]
+  onChange: (v: T) => void
+  disabled?: boolean
+}) {
+  return (
+    <div>
+      <p className="mb-1 text-sm font-medium text-ink-soft">{label}</p>
+      <div role="radiogroup" aria-label={label} className="flex rounded-xl border border-line bg-surface-2 p-1">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={value === o.id}
+            disabled={disabled}
+            onClick={() => onChange(o.id)}
+            className={`min-h-10 flex-1 rounded-lg px-3 text-sm font-semibold disabled:opacity-50 ${value === o.id ? 'bg-surface text-brand shadow-sm' : 'text-ink-soft'}`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Choix des jours de la semaine (0 = dimanche). */
+export function WeekdayPicker({ value, onChange, disabled }: { value: number[]; onChange: (v: number[]) => void; disabled?: boolean }) {
+  const names = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+  return (
+    <div className="flex flex-wrap gap-2">
+      {names.map((label, d) => (
+        <button
+          key={d}
+          type="button"
+          aria-pressed={value.includes(d)}
+          disabled={disabled}
+          onClick={() => onChange(value.includes(d) ? value.filter((x) => x !== d) : [...value, d].sort())}
+          className={`min-h-11 rounded-full border px-4 text-sm disabled:cursor-not-allowed ${value.includes(d) ? 'border-brand bg-brand text-white' : 'border-line'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export function BackLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <Link to={to} className="inline-flex min-h-10 items-center gap-1 text-sm font-medium text-brand">
+      <span aria-hidden>‹</span> {children}
+    </Link>
+  )
+}
+
+/** Lien présenté comme un bouton principal (évite un bouton dans un lien). */
+export function ButtonLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <Link to={to} className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 text-base font-semibold ${VARIANTS.primary}`}>
+      {children}
+    </Link>
   )
 }
