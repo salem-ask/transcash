@@ -5,12 +5,13 @@ import { useSession } from '../../app/session'
 import { MoneyTotals } from '../../components/Money'
 import { Alert, BackLink, Button, Card, Field, Segmented, Select, Spinner, TextArea } from '../../components/ui'
 import { formatDay, todayIn } from '../../domain/fleet'
-import { allocate, totalIn, type LedgerDay, type Totals } from '../../domain/ledger'
+import { allocate, dayKey, totalIn, type LedgerDay, type Totals } from '../../domain/ledger'
 import { DECIMALS, formatMoney, parseAmount } from '../../domain/money'
 import type { Currency, Driver, LedgerPayload, PaymentKind, PaymentMethod } from '../../domain/types'
 import { errorText } from '../../lib/useLoad'
+import { DayChecklist } from './DayChecklist'
 
-const keyOf = (d: { vehicleId: string; date: string }) => `${d.vehicleId}|${d.date}`
+const keyOf = dayKey
 const toText = (amount: number, c: Currency) => (amount / 10 ** DECIMALS[c]).toString().replace('.', ',')
 
 /** Encaisser un versement : on choisit le chauffeur, puis les journées payées (ou un versement exceptionnel). */
@@ -111,37 +112,7 @@ export function NewPaymentPage() {
 
   const multiVehicle = new Set(due.map((d) => d.vehicleId)).size > 1
   const dayList = (items: LedgerDay[]) => (
-    <ul className="divide-y divide-line">
-      {items.map((d) => {
-        const k = keyOf(d)
-        const on = selected.has(k)
-        const alloc = allocatedByDay.get(k)
-        const weekday = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${d.date}T00:00:00Z`))
-        return (
-          <li key={k}>
-            <label className="flex min-h-14 cursor-pointer items-center gap-3 py-2">
-              <input type="checkbox" checked={on} onChange={() => toggle(d)} className="size-6 shrink-0 accent-[var(--color-brand)]" />
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium first-letter:uppercase">{weekday}</span>
-                <span className="block text-xs text-ink-soft">
-                  {multiVehicle ? `${d.vehicleName} · ` : ''}
-                  {d.paid > 0 ? `déjà ${formatMoney(d.paid, d.currency)} payés · ` : ''}
-                  {d.override ? 'montant exceptionnel' : ''}
-                </span>
-              </span>
-              <span className="shrink-0 text-right text-sm tabular-nums">
-                <span className="block font-semibold">{formatMoney(d.remaining, d.currency)}</span>
-                {on && amount !== null && (
-                  <span className={`block text-xs ${alloc === d.remaining ? 'text-brand' : alloc ? 'text-ink' : 'text-danger'}`}>
-                    {alloc === d.remaining ? 'complet' : alloc ? `partiel : ${formatMoney(alloc, d.currency)}` : 'non couvert'}
-                  </span>
-                )}
-              </span>
-            </label>
-          </li>
-        )
-      })}
-    </ul>
+    <DayChecklist days={items} selected={selected} onToggle={toggle} allocated={allocatedByDay} showPreview={amount !== null} multiVehicle={multiVehicle} />
   )
 
   return (
