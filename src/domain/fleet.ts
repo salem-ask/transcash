@@ -56,6 +56,7 @@ export function dayStatus(opts: { amount: AmountChange | null; restDays: number[
 export const DAY_STATUS_LABEL: Record<DayStatus, string> = {
   due: 'Doit verser',
   rest: 'Repos',
+  breakdown: 'Panne',
   no_driver: 'Sans chauffeur',
   not_started: 'Pas encore en service',
 }
