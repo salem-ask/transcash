@@ -31,7 +31,7 @@ npm run lint
 ## Déploiement sur Hostinger
 
 1. **Base de données** — hPanel › *Bases de données MySQL* : créer une base et un utilisateur.
-   Ouvrir *phpMyAdmin* › *Importer* › choisir `api/schema.sql`.
+   Les tables sont créées automatiquement au premier appel de l'API (pas besoin de phpMyAdmin).
 2. **Build** — sur votre ordinateur : `npm install && npm run build`. Le dossier `dist/` contient
    l'interface **et** l'API (`dist/api`), sans fichier de configuration.
 3. **Envoi** — hPanel › *Gestionnaire de fichiers* (ou FTP) : envoyer **le contenu** de `dist/`

@@ -107,7 +107,7 @@ utilisable avec une connexion faible ou absente.
 | Prévisualisation | Build « preview » en un seul fichier HTML, **mode démo** (données dans le navigateur) | Voir l'application sans serveur (artefact claude.ai) |
 | Application installable | PWA (phase 6) | Android et ordinateur, sans store |
 | Stockage local (offline) | IndexedDB via Dexie.js (phase 6) | Saisie hors connexion, file de synchronisation |
-| Exports | jsPDF / SheetJS (phase 5) | PDF et Excel côté client |
+| Exports | jsPDF 4 + jspdf-autotable / write-excel-file 4 (chargés au clic) | PDF et Excel côté client, 0 vulnérabilité connue |
 | Reçus | Liens `wa.me` / `sms:` pré-remplis (phase 3) | Aucun coût d'API |
 | Tests | **Vitest** (règles métier) + test d'intégration PHP (`api/tests/api_test.php`) + Playwright (parcours) | |
 
@@ -207,9 +207,11 @@ npm run build            # build Hostinger → dist/ (interface + api/, sans con
 npm run build:preview    # prévisualisation démo → preview/artifact.html
 ```
 
-**Déploiement (Hostinger) :** voir README.md. En bref : créer la base MySQL, importer
-`api/schema.sql`, envoyer le contenu de `dist/` dans `public_html/`, créer `public_html/api/config.php`
-à partir de `config.example.php`, ouvrir le site et créer le compte principal.
+**Déploiement (Hostinger) :** voir README.md. En bref : créer la base MySQL, envoyer le contenu de `dist/`
+dans `public_html/`, créer `public_html/api/config.php` à partir de `config.example.php`, ouvrir le site :
+le schéma s'installe tout seul au premier appel, puis on crée le compte principal.
+Site prévu : **https://transcash.bookline.digital** (compte Hostinger `u977986808`, base `u977986808_transcash`,
+hôte `localhost` depuis l'application ; le mot de passe n'est jamais dans le dépôt).
 
 **Prévisualisation :** https://claude.ai/artifact/8n13guotYeo2WqaeFKJXJW (mode démo, privée).
 La republier après chaque phase (`npm run build:preview`, puis publier `preview/artifact.html`).
@@ -229,7 +231,8 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Schéma MySQL multi-tenant (owners, users, settings, exchange_rates, audit_log, login_attempts)
 - [x] API PHP (routeur, sessions, CSRF, anti force brute, journal des modifications)
 - [x] Prévisualisation en mode démo (artefact)
-- [ ] Premier déploiement sur Hostinger (en attente de la connexion Hostinger)
+- [~] Premier déploiement sur Hostinger : site `transcash.bookline.digital` et base `u977986808_transcash` créés ;
+      envoi des fichiers en attente (le réseau de la session bloque le serveur de fichiers Hostinger)
 
 ### Phase 1 — Authentification, tableau de bord, paramètres ✅
 - [x] Installation : création du compte principal (entreprise + super admin), une seule fois
@@ -264,7 +267,7 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Versement idempotent (UUID de l'appareil) : prêt pour le hors connexion
 - [x] Tableau de bord : attendu / versé / manque du jour, encaissé, dettes totales, plus gros débiteurs
 - [x] Vue par engin : journées récentes (chauffeur, attendu, payé) ; vue chauffeur : situation, impayés, reçus
-- [ ] Vue semaine (tableau de bord « semaine ») — à faire avec les rapports (phase 5)
+- [x] Vue semaine (carte « Cette semaine » sur l'accueil, phase 5)
 
 ### Phase 4 — Dépenses, pannes, immobilisations ✅
 - [x] Dépenses par engin ou générales (9 catégories, fournisseur, note), modifiables et annulables avec motif
@@ -276,10 +279,13 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Échéances (assurance, vignette, vidange, contrôle technique, autre) : alerte N jours avant, renouvellement
 - [x] Bilan par engin (versements, dépenses, bénéfice du mois) ; tableau de bord : dépenses, bénéfice réel, caisse, alertes
 
-### Phase 5 — Rapports et exports
-- [ ] Rapports (période, engin, chauffeur)
-- [ ] Export PDF
-- [ ] Export Excel
+### Phase 5 — Rapports et exports ✅
+- [x] Rapports : cette semaine, ce mois, mois dernier, 30 jours ou période libre ; tout le parc, un engin ou un chauffeur
+- [x] Indicateurs : attendu, payé, reste dû, taux de recouvrement, versements reçus (caisse / dépenses chauffeur / exceptionnels), dépenses, bénéfice réel, jours impayés / panne / repos
+- [x] Détail par engin, par chauffeur, jour par jour (graphique), dépenses par catégorie
+- [x] Export PDF (jsPDF 4 + autotable) : résumé, tableaux, liste des versements et dépenses
+- [x] Export Excel (write-excel-file 4) : 6 onglets (résumé, par engin, par chauffeur, par jour, versements, dépenses)
+- [x] Installation / mise à jour automatique du schéma MySQL par l'API (plus besoin de phpMyAdmin)
 
 ### Phase 6 — Offline, synchronisation, sécurité
 - [ ] Stockage local + file de synchronisation
@@ -346,6 +352,11 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | Immobilisations (`breakdowns`) transformées en jours « panne » dans le grand livre ; une marque explicite du jour reste prioritaire | Une réparation finie à midi peut être une demi-journée |
 | 2026-11-10 | Immobilisation refusée sur des jours déjà payés | Ne pas « perdre » un versement sur un jour devenu non dû |
 | 2026-11-10 | Bénéfice = tous les versements (y compris dépenses payées par chauffeur) − toutes les dépenses | Cohérent : la dépense chauffeur est à la fois un revenu et une charge |
+| 2026-11-10 | Rapports : l'API renvoie les données brutes, le calcul est fait par `src/domain/report.ts` (même code en ligne et en démo) | Une seule implémentation testée, pas d'écart entre les deux |
+| 2026-11-10 | Exports générés dans le navigateur, bibliothèques chargées au clic | Rien à installer sur Hostinger ; application de base légère |
+| 2026-11-10 | write-excel-file au lieu de SheetJS ; jsPDF 4 | SheetJS (npm) et jsPDF 2 ont des vulnérabilités connues |
+| 2026-11-10 | Schéma MySQL appliqué automatiquement par l'API quand `schema.sql` change (table `schema_state`, verrou) | Déploiement sans phpMyAdmin ; `schema.sql` est rejouable |
+| 2026-11-10 | Hébergement : `transcash.bookline.digital` (sous-domaine de bookline.digital) | Choix du propriétaire |
 
 ---
 
