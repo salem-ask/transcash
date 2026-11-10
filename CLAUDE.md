@@ -105,8 +105,8 @@ utilisable avec une connexion faible ou absente.
 | Authentification | Sessions PHP (cookie `HttpOnly`, `SameSite=Lax`), `password_hash` | Simple et sûr, même domaine que l'interface |
 | Droits | `api/permissions.json`, lu par PHP **et** par l'interface | Une seule source de vérité |
 | Prévisualisation | Build « preview » en un seul fichier HTML, **mode démo** (données dans le navigateur) | Voir l'application sans serveur (artefact claude.ai) |
-| Application installable | PWA (phase 6) | Android et ordinateur, sans store |
-| Stockage local (offline) | IndexedDB via Dexie.js (phase 6) | Saisie hors connexion, file de synchronisation |
+| Application installable | PWA via vite-plugin-pwa (service worker, manifeste) | Android et ordinateur, sans store, démarre hors ligne |
+| Stockage local (offline) | IndexedDB via **idb-keyval** (1 Ko) + `src/data/offline.ts` | Cache des lectures, file d'envoi, « à corriger » |
 | Exports | jsPDF 4 + jspdf-autotable / write-excel-file 4 (chargés au clic) | PDF et Excel côté client, 0 vulnérabilité connue |
 | Reçus | Liens `wa.me` / `sms:` pré-remplis (phase 3) | Aucun coût d'API |
 | Tests | **Vitest** (règles métier) + test d'intégration PHP (`api/tests/api_test.php`) + Playwright (parcours) | |
@@ -115,11 +115,13 @@ utilisable avec une connexion faible ou absente.
 8 échecs de connexion en 15 min par identifiant (50 par IP) ; un compte désactivé est déconnecté immédiatement ; chaque requête
 filtre par `owner_id` de l'utilisateur connecté (multi-tenant).
 
-**Principes de synchronisation (phase 6, prévus dès maintenant) :**
-- chaque enregistrement a un **UUID** (généré sur l'appareil) → envoi idempotent (upsert) ;
-- champs `created_at`, `updated_at`, `deleted_at` (suppression logique) ;
-- file d'attente locale des opérations, rejouée à la reconnexion ;
-- opérations clôturées = verrouillées côté serveur.
+**Synchronisation hors connexion (phase 6) :**
+- toutes les requêtes passent par `src/data/offline.ts` (instance : `src/data/offlineSetup.ts`) ;
+- lecture réussie → copie sur l'appareil ; sans réseau → dernière copie ;
+- écriture sans réseau → file ordonnée sur l'appareil, renvoyée avec la **même** `X-Idempotency-Key` ;
+- serveur : table `idempotency_keys` → une clé déjà vue renvoie la réponse d'origine (aucun doublon) ;
+- refus métier à la synchronisation → « À corriger » ; 401 / 5xx / réseau → on réessaie plus tard ;
+- les versements et dépenses ont en plus leur propre UUID généré sur l'appareil.
 
 **Montants et devises :**
 - montants stockés en **entiers** dans l'unité minimale : **CDF = 0 décimale** (franc),
@@ -168,10 +170,10 @@ transcash/
 └── src/
     ├── app/                # App (routes), Layout (navigation), session (contexte)
     ├── components/         # ui.tsx (Button, Field, Card…), Money.tsx
-    ├── data/               # backend.ts (contrat), apiBackend.ts, demoBackend.ts
+    ├── data/               # backend.ts (contrat), apiBackend.ts, demoBackend.ts, offline.ts (+ tests), offlineSetup.ts
     ├── domain/             # règles métier pures + tests (money, fleet, ledger, receipt, finance, permissions, types)
-    ├── features/           # auth, dashboard, payments, expenses, cash, reminders, audit, vehicles, drivers, settings, users, account
-    └── lib/                # format (dates), useLoad (chargement), search (recherche sans accents)
+    ├── features/           # auth, dashboard, payments, expenses, cash, reminders, reports, audit, sync, vehicles, drivers, settings, users, account
+    └── lib/                # format, useLoad (rechargement après synchro), search, flash (message), useSync (état hors ligne)
 ```
 
 ---
@@ -287,16 +289,25 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Export Excel (write-excel-file 4) : 6 onglets (résumé, par engin, par chauffeur, par jour, versements, dépenses)
 - [x] Installation / mise à jour automatique du schéma MySQL par l'API (plus besoin de phpMyAdmin)
 
-### Phase 6 — Offline, synchronisation, sécurité
-- [ ] Stockage local + file de synchronisation
-- [ ] Synchronisation sans perte ni doublon
-- [ ] Application installable (Android, ordinateur)
+### Phase 6 — Offline, synchronisation, sécurité ✅
+- [x] Toutes les lectures : dernière copie gardée sur l'appareil (IndexedDB), servie sans réseau, bandeau « données du … »
+- [x] Toutes les écritures : file d'envoi sur l'appareil, envoyée dans l'ordre au retour du réseau (en ligne, au retour sur l'appli, toutes les 30 s)
+- [x] Sans perte ni doublon : clé `X-Idempotency-Key` sur chaque écriture, réponse d'origine renvoyée par le serveur en cas de renvoi
+- [x] Conflits : le premier passe, le second va dans « À corriger » (écran Synchronisation : renvoyer / abandonner)
+- [x] Déconnexion bloquée tant que des opérations ne sont pas envoyées ; copies locales effacées à la déconnexion
+- [x] Application installable (PWA : manifeste, icônes, service worker) qui démarre sans réseau
 - [x] Journal des modifications (fait en phase 4)
-- [ ] Sauvegardes
-- [ ] Protection contre les suppressions accidentelles
+- [x] Sauvegarde : bouton « Télécharger une sauvegarde » (super admin, JSON complet sans mots de passe) + sauvegardes Hostinger
+- [x] Protection contre les suppressions accidentelles : aucune suppression physique, annulation avec motif, confirmations à l'écran
+- [x] Sécurité : en-têtes (CSP stricte, anti-iframe, HSTS), HTTPS forcé, cookies HttpOnly/SameSite, anti-CSRF, anti force brute
+- [ ] Restauration d'une sauvegarde depuis l'application (non demandée pour l'instant)
+- [ ] Notifications sur le téléphone pour les échéances
 
 ### Questions ouvertes
-- Alertes d'échéance : affichées dans l'application uniquement (pas encore de notification sur le téléphone — phase 6).
+- Alertes d'échéance : affichées dans l'application uniquement (notifications téléphone : à décider).
+- Hors connexion : une saisie qui dépend d'une autre saisie hors ligne (ex. versement sur un chauffeur créé hors ligne)
+  part dans l'ordre ; si la première est refusée, la seconde le sera aussi (« À corriger »).
+- Reçu d'un versement saisi hors ligne : numéro attribué par le serveur, donc disponible après synchronisation.
 - Vidange suivie par date (pas encore au kilométrage).
 - Indicatif des reçus WhatsApp/SMS : les numéros locaux (0…) sont considérés comme congolais (+243).
 - Droit « marquer une journée » (repos/panne/montant exceptionnel) donné aussi au gestionnaire et au comptable.
@@ -357,6 +368,13 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | write-excel-file au lieu de SheetJS ; jsPDF 4 | SheetJS (npm) et jsPDF 2 ont des vulnérabilités connues |
 | 2026-11-10 | Schéma MySQL appliqué automatiquement par l'API quand `schema.sql` change (table `schema_state`, verrou) | Déploiement sans phpMyAdmin ; `schema.sql` est rejouable |
 | 2026-11-10 | Hébergement : `transcash.bookline.digital` (sous-domaine de bookline.digital) | Choix du propriétaire |
+| 2026-11-10 | **Toutes les opérations possibles hors connexion**, synchronisées au retour du réseau | Choix du propriétaire |
+| 2026-11-10 | **Conflit de synchronisation : le premier passe, le second « à corriger »** | Choix du propriétaire |
+| 2026-11-10 | **Sauvegarde téléchargeable depuis l'application** (super admin) en plus d'Hostinger | Choix du propriétaire |
+| 2026-11-10 | Anti-doublon générique par clé d'idempotence côté serveur, plutôt qu'un mécanisme par table | Une seule règle pour toutes les écritures, testée |
+| 2026-11-10 | idb-keyval au lieu de Dexie | File et cache simples (clé → valeur) : 1 Ko au lieu de ~90 Ko |
+| 2026-11-10 | Le service worker ne met pas l'API en cache (uniquement l'application) | Les données hors ligne sont gérées par la couche offline, avec des règles claires |
+| 2026-11-10 | Déploiement en pause : l'envoi des fichiers depuis la session est bloqué par le réseau ; à finir depuis l'ordinateur du propriétaire | Demande du propriétaire |
 
 ---
 
