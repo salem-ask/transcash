@@ -1,6 +1,6 @@
 import type { Backend } from './backend'
 import { BackendError } from './backend'
-import type { RatesBundle, SessionState, SettingsBundle, User } from '../domain/types'
+import type { Driver, DriverDetail, RatesBundle, SessionState, SettingsBundle, User, Vehicle, VehicleDetail } from '../domain/types'
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? './api'
 
@@ -43,4 +43,17 @@ export const apiBackend: Backend = {
   createUser: (input) => call<{ users: User[] }>('POST', '/users', input).then(users),
   updateUser: (id, patch) => call<{ users: User[] }>('PUT', `/users/${id}`, patch).then(users),
   dashboard: () => call('GET', '/dashboard'),
+
+  listVehicles: () => call<{ vehicles: Vehicle[] }>('GET', '/vehicles').then((r) => r.vehicles),
+  getVehicle: (id) => call<VehicleDetail>('GET', `/vehicles/${id}`),
+  createVehicle: (input) => call<VehicleDetail>('POST', '/vehicles', input),
+  updateVehicle: (id, input) => call<VehicleDetail>('PUT', `/vehicles/${id}`, input),
+  setVehicleStatus: (id, status, date) => call<VehicleDetail>('POST', `/vehicles/${id}/status`, { status, date }),
+  assignDriver: (id, driverId, startDate) => call<VehicleDetail>('POST', `/vehicles/${id}/assign`, { driverId, startDate }),
+  unassignDriver: (id, endDate) => call<VehicleDetail>('POST', `/vehicles/${id}/unassign`, { endDate }),
+  listDrivers: () => call<{ drivers: Driver[] }>('GET', '/drivers').then((r) => r.drivers),
+  getDriver: (id) => call<DriverDetail>('GET', `/drivers/${id}`),
+  createDriver: (input) => call<DriverDetail>('POST', '/drivers', input),
+  updateDriver: (id, input) => call<DriverDetail>('PUT', `/drivers/${id}`, input),
+  createDriverAccount: (id, password) => call<DriverDetail>('POST', `/drivers/${id}/account`, { password }),
 }
