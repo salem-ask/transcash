@@ -32,6 +32,7 @@ export function VehicleBadge({ type }: { type: VehicleType }) {
 const PILL: Record<DayStatus | 'retired' | 'inactive', string> = {
   due: 'bg-brand/15 text-brand-strong',
   rest: 'bg-surface-2 text-ink-soft',
+  breakdown: 'bg-danger/15 text-danger',
   no_driver: 'bg-accent/20 text-ink',
   not_started: 'bg-surface-2 text-ink-soft',
   retired: 'bg-surface-2 text-ink-soft',

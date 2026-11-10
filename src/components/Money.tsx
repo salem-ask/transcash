@@ -1,6 +1,7 @@
 import { useSession } from '../app/session'
 import { convert, formatMoney } from '../domain/money'
 import type { Currency } from '../domain/types'
+import { totalIn, type Totals } from '../domain/ledger'
 
 /**
  * Affiche un montant dans sa devise, avec l'équivalent dans la devise secondaire
@@ -17,6 +18,24 @@ export function Money({ amount, currency, className = '', large }: { amount: num
       {showEq && (
         <span className="text-xs text-ink-soft tabular-nums">≈ {formatMoney(convert(amount, currency, other, rate), other)}</span>
       )}
+    </span>
+  )
+}
+
+/**
+ * Total multi-devises (ex. dettes en FC et en $), affiché dans la devise principale.
+ * Si un taux manque, affiche chaque devise séparément.
+ */
+export function MoneyTotals({ totals, className = '', large }: { totals: Totals; className?: string; large?: boolean }) {
+  const { bundle } = useSession()
+  const base = bundle?.settings.baseCurrency ?? 'CDF'
+  const total = totalIn(totals, base, bundle?.rate?.rate ?? null)
+  if (total !== null) return <Money amount={total} currency={base} className={className} large={large} />
+  return (
+    <span className={`inline-flex flex-col font-semibold tabular-nums ${className}`}>
+      {(Object.entries(totals) as [Currency, number][]).map(([c, n]) => (
+        <span key={c}>{formatMoney(n, c)}</span>
+      ))}
     </span>
   )
 }
