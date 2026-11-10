@@ -112,7 +112,7 @@ utilisable avec une connexion faible ou absente.
 | Tests | **Vitest** (règles métier) + test d'intégration PHP (`api/tests/api_test.php`) + Playwright (parcours) | |
 
 **Sécurité de l'API :** toute écriture exige l'en-tête `X-TransCash: 1` (anti-CSRF) ; blocage après
-8 échecs de connexion en 15 min ; un compte désactivé est déconnecté immédiatement ; chaque requête
+8 échecs de connexion en 15 min par identifiant (50 par IP) ; un compte désactivé est déconnecté immédiatement ; chaque requête
 filtre par `owner_id` de l'utilisateur connecté (multi-tenant).
 
 **Principes de synchronisation (phase 6, prévus dès maintenant) :**
@@ -133,6 +133,12 @@ filtre par `owner_id` de l'utilisateur connecté (multi-tenant).
   opération enregistrera le taux utilisé (phase 3) pour que l'historique ne change jamais ;
 - d'autres devises plus tard : chaque montant porte un code ISO 4217.
 
+**Grand livre (cœur du calcul, `src/domain/ledger.ts` ⇄ `api/lib/ledger.php`, à modifier ensemble) :**
+- pour chaque jour où le chauffeur est affecté : attendu = montant en vigueur ce jour-là, sauf jour de repos
+  (engin ou paramètres), panne, ou montant exceptionnel (marque `day_marks`) ;
+- payé = somme des `payment_allocations` des versements non annulés ; reste = attendu − payé ;
+- dette = reste des jours passés ; avance = payé sur les jours futurs ; tout est recalculé à chaque lecture.
+
 ---
 
 ## 6. Structure des dossiers
@@ -152,16 +158,16 @@ transcash/
 │   ├── schema.sql          # schéma MySQL COMPLET (installation neuve)
 │   ├── migrations/         # changements par phase pour une base déjà installée
 │   ├── permissions.json    # droits par rôle (partagé avec l'interface)
-│   ├── lib/                # core (BDD, JSON, journal), auth, taux, fleet (dates, montants)
-│   ├── routes/             # auth, settings (+ taux), users, vehicles, drivers, dashboard
+│   ├── lib/                # core (BDD, JSON, journal), auth, taux, fleet (dates, montants), ledger (dettes)
+│   ├── routes/             # auth, settings (+ taux), users, vehicles, drivers, payments (+ journées), dashboard
 │   └── tests/api_test.php  # test d'intégration (base de TEST vidée)
 ├── scripts/                # copy-api.mjs, preview-artifact.mjs
 └── src/
     ├── app/                # App (routes), Layout (navigation), session (contexte)
     ├── components/         # ui.tsx (Button, Field, Card…), Money.tsx
     ├── data/               # backend.ts (contrat), apiBackend.ts, demoBackend.ts
-    ├── domain/             # règles métier pures + tests (money, fleet, permissions, types)
-    ├── features/           # auth, dashboard, vehicles, drivers, settings, users, account (+ menu)
+    ├── domain/             # règles métier pures + tests (money, fleet, ledger, receipt, permissions, types)
+    ├── features/           # auth, dashboard, payments, vehicles, drivers, settings, users, account (+ menu)
     └── lib/                # format (dates), useLoad (chargement), search (recherche sans accents)
 ```
 
@@ -229,7 +235,7 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Paramètres : devise principale CDF/USD, équivalence, fuseau horaire, jours de repos
 - [x] Taux de change automatique / manuel, historique
 - [x] Tableau de bord (squelette : chiffres à zéro jusqu'aux phases 2-3, taux du jour)
-- [ ] Vue « chauffeur » détaillée (sera remplie en phase 3 avec ses versements et dettes)
+- [x] Vue « chauffeur » détaillée (phase 3 : sa situation, ses journées, ses reçus)
 
 ### Phase 2 — Engins et chauffeurs ✅
 - [x] Engins : type, nom, immatriculation (unique), modèle, mise en service, notes
@@ -242,14 +248,20 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Tableau de bord : attendu du jour (converti), état du parc (doivent verser / repos / sans chauffeur)
 - [x] Navigation téléphone : Accueil, Engins, Chauffeurs, Menu
 
-### Phase 3 — Versements et dettes
-- [ ] Saisie de versement (complet, partiel, retard, anticipé, exceptionnel)
-- [ ] Mode de paiement (espèces, Mobile Money, banque)
-- [ ] Journées repos / panne
-- [ ] Dette automatique sur journée travaillée non payée
-- [ ] Remboursement des arriérés
-- [ ] Reçu WhatsApp / SMS
-- [ ] Tableau de bord complet (global + par engin)
+### Phase 3 — Versements et dettes ✅
+- [x] Saisie de versement en **cochant les journées payées** : complet, partiel (dernière journée), retard, anticipé (31 j max)
+- [x] Versement **exceptionnel** hors journalier (motif obligatoire) + **montant exceptionnel** d'une journée
+- [x] Mode de paiement (espèces, Mobile Money + référence, banque), date de réception
+- [x] Paiement dans l'autre devise converti au taux en vigueur, taux conservé avec le versement
+- [x] Journées repos / panne / montant exceptionnel par engin (refusé si déjà payé au-delà)
+- [x] Dette automatique sur journée travaillée non payée (grand livre calculé, rattaché au chauffeur)
+- [x] Remboursement des arriérés (cocher les journées en retard, « Tout cocher »)
+- [x] Reçu numéroté, envoi WhatsApp / SMS (liens pré-remplis), copie du texte
+- [x] Annulation d'un versement avec motif (jamais de suppression)
+- [x] Versement idempotent (UUID de l'appareil) : prêt pour le hors connexion
+- [x] Tableau de bord : attendu / versé / manque du jour, encaissé, dettes totales, plus gros débiteurs
+- [x] Vue par engin : journées récentes (chauffeur, attendu, payé) ; vue chauffeur : situation, impayés, reçus
+- [ ] Vue semaine (tableau de bord « semaine ») — à faire avec les rapports (phase 5)
 
 ### Phase 4 — Dépenses, pannes, immobilisations
 - [ ] Dépenses par engin
@@ -271,9 +283,8 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [ ] Protection contre les suppressions accidentelles
 
 ### Questions ouvertes
-- Règles de la phase 2 appliquées sans validation explicite (à confirmer) :
-  un chauffeur ne conduit **qu'un engin à la fois** ; un engin **sans chauffeur** ne doit rien ce jour-là
-  (ni dette) ; le retrait du parc termine l'affectation ; un chauffeur en service ne peut pas être désactivé.
+- Indicatif des reçus WhatsApp/SMS : les numéros locaux (0…) sont considérés comme congolais (+243).
+- Droit « marquer une journée » (repos/panne/montant exceptionnel) donné aussi au gestionnaire et au comptable.
 - Super admin : aujourd'hui = rôle le plus élevé **dans** une entreprise. Faut-il plus tard un
   super admin « plateforme » qui voit toutes les entreprises ?
 
@@ -310,6 +321,15 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | Pas de suppression d'engin/chauffeur : retrait du parc / désactivation | Conserver l'historique, éviter les suppressions accidentelles |
 | 2026-11-10 | Blocage de connexion par identifiant (8) et par IP (50) séparés | Les IP mobiles sont partagées en RDC |
 | 2026-11-10 | Migrations SQL numérotées (`api/migrations/`) en plus de `schema.sql` | Mettre à jour une base déjà installée sur Hostinger |
+| 2026-11-10 | Règles phase 2 validées : 1 engin par chauffeur, sans chauffeur = rien de dû, retrait = fin d'affectation, pas de désactivation en service | Réponse du propriétaire |
+| 2026-11-10 | **Versement : on choisit les journées payées à chaque saisie** (pas d'imputation automatique) | Choix du propriétaire |
+| 2026-11-10 | **Dette rattachée au chauffeur** (le suit s'il change d'engin ou part) | Choix du propriétaire |
+| 2026-11-10 | **Exceptionnel = les deux** : versement hors journalier (ne rembourse pas de dette) et montant d'un jour modifié | Choix du propriétaire |
+| 2026-11-10 | Dettes calculées à la volée (grand livre) depuis affectations, montants, marques et versements — rien de stocké | Une correction (panne, annulation) se répercute immédiatement, sans recalcul ni incohérence |
+| 2026-11-10 | Surplus non affecté refusé : cocher un jour de plus ou passer en exceptionnel | Pas d'argent « flottant » non expliqué |
+| 2026-11-10 | Versement converti une seule fois dans la devise des journées | Éviter les pertes d'arrondi jour par jour |
+| 2026-11-10 | Reçus : numéro séquentiel par propriétaire ; envoi par liens wa.me / sms: | Aucun coût d'API |
+| 2026-11-10 | Démo : données relatives à la date du jour | Le parc d'exemple reste réaliste quel que soit le jour d'ouverture |
 
 ---
 
