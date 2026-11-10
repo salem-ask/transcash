@@ -1,0 +1,35 @@
+# Dépendances
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+dist-ssr/
+build/
+coverage/
+.vite/
+
+# Variables d'environnement et secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+supabase/.temp/
+supabase/.branches/
+
+# Tests
+playwright-report/
+test-results/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Éditeurs / système
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
