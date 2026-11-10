@@ -9,6 +9,8 @@ import { allocate, dayKey, totalIn, type LedgerDay, type Totals } from '../../do
 import { DECIMALS, formatMoney, parseAmount } from '../../domain/money'
 import type { Currency, Driver, LedgerPayload, PaymentKind, PaymentMethod } from '../../domain/types'
 import { errorText } from '../../lib/useLoad'
+import { isQueued } from '../../data/offline'
+import { setFlash } from '../../lib/flash'
 import { DayChecklist } from './DayChecklist'
 
 const keyOf = dayKey
@@ -105,6 +107,10 @@ export function NewPaymentPage() {
       })
       navigate(`/versements/${saved.id}?nouveau=1`, { replace: true })
     } catch (err) {
+      if (isQueued(err)) {
+        setFlash(err.message)
+        return navigate('/versements', { replace: true })
+      }
       setError(errorText(err))
       setBusy(false)
     }

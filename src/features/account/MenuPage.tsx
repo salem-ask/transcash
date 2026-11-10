@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useSession } from '../../app/session'
+import { setFlash } from '../../lib/flash'
 import { Button, Card } from '../../components/ui'
 import { can, roleLabel, type Permission } from '../../domain/permissions'
 
@@ -41,7 +42,7 @@ export function MenuPage() {
           ))}
         </ul>
       </nav>
-      <Button variant="secondary" className="w-full" onClick={() => void logout()}>
+      <Button variant="secondary" className="w-full" onClick={() => logout().catch((e: unknown) => setFlash(e instanceof Error ? e.message : String(e), 'error'))}>
         Se déconnecter
       </Button>
     </div>

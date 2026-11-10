@@ -5,7 +5,7 @@ import { Alert, Button, Card, Field, Segmented, Spinner } from '../../components
 import { DAY_KIND_LABEL, PAY_STATE_LABEL } from '../../domain/ledger'
 import { DECIMALS, formatMoney, parseAmount } from '../../domain/money'
 import type { Currency, Vehicle, VehicleDay } from '../../domain/types'
-import { errorText, useLoad } from '../../lib/useLoad'
+import { msgOf, useLoad } from '../../lib/useLoad'
 
 type MarkChoice = 'normal' | 'rest' | 'breakdown' | 'override'
 
@@ -30,7 +30,7 @@ export function VehicleDaysCard({ vehicle, canMark }: { vehicle: Vehicle; canMar
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState<Currency>(vehicle.currency)
   const [reason, setReason] = useState('')
-  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [showAll, setShowAll] = useState(false)
 
@@ -67,7 +67,7 @@ export function VehicleDaysCard({ vehicle, canMark }: { vehicle: Vehicle; canMar
       setEditing(null)
       setMsg({ kind: 'success', text: 'Journée mise à jour' })
     } catch (err) {
-      setMsg({ kind: 'error', text: errorText(err) })
+      setMsg(msgOf(err))
     } finally {
       setBusy(false)
     }

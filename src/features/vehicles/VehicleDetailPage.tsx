@@ -9,7 +9,7 @@ import { addDays, formatDay, todayIn, vehicleTypeLabel } from '../../domain/flee
 import { can } from '../../domain/permissions'
 import type { Driver, VehicleDetail } from '../../domain/types'
 import { WEEKDAYS } from '../../lib/format'
-import { errorText, useLoad } from '../../lib/useLoad'
+import { msgOf, useLoad } from '../../lib/useLoad'
 import { VehicleDaysCard } from './VehicleDaysCard'
 import { BreakdownsCard, RemindersCard, VehicleFinanceCard } from './VehicleOpsCards'
 
@@ -25,7 +25,7 @@ export function VehicleDetailPage() {
   const [drivers, setDrivers] = useState<Driver[] | null>(null)
   const [driverId, setDriverId] = useState('')
   const [date, setDate] = useState(today)
-  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   // Incrémenté quand une immobilisation change : les journées sont rechargées
   const [version, setVersion] = useState(0)
@@ -42,7 +42,7 @@ export function VehicleDetailPage() {
     setDate(p === 'assign' && current ? (current.since >= today ? addDays(current.since, 1) : today) : today)
     if (p === 'assign') {
       setDriverId('')
-      backend.listDrivers().then(setDrivers, (e) => setMsg({ kind: 'error', text: errorText(e) }))
+      backend.listDrivers().then(setDrivers, (e) => setMsg(msgOf(e)))
     }
   }
 
@@ -54,7 +54,7 @@ export function VehicleDetailPage() {
       setPanel(null)
       setMsg({ kind: 'success', text: success })
     } catch (e) {
-      setMsg({ kind: 'error', text: errorText(e) })
+      setMsg(msgOf(e))
     } finally {
       setBusy(false)
     }

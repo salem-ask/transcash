@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { backend } from '../../data'
 import { useSession } from '../../app/session'
+import { setFlash } from '../../lib/flash'
 import { Alert, Button, Card, Field } from '../../components/ui'
 import { roleLabel } from '../../domain/permissions'
 
@@ -8,7 +9,7 @@ export function AccountPage() {
   const { session, logout } = useSession()
   const user = session!.user!
   const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' })
-  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function changePassword(e: FormEvent) {
@@ -48,7 +49,7 @@ export function AccountPage() {
         </form>
       </Card>
 
-      <Button variant="danger" className="w-full" onClick={() => void logout()}>
+      <Button variant="danger" className="w-full" onClick={() => logout().catch((e: unknown) => setFlash(e instanceof Error ? e.message : String(e), 'error'))}>
         Se déconnecter
       </Button>
     </div>

@@ -9,6 +9,8 @@ import { todayIn, VEHICLE_TYPES } from '../../domain/fleet'
 import type { Currency, VehicleDetail, VehicleType } from '../../domain/types'
 import { WEEKDAYS } from '../../lib/format'
 import { errorText } from '../../lib/useLoad'
+import { isQueued } from '../../data/offline'
+import { setFlash } from '../../lib/flash'
 
 interface FormState {
   type: VehicleType
@@ -76,6 +78,10 @@ export function VehicleFormPage() {
       const saved = original ? await backend.updateVehicle(original.vehicle.id, input) : await backend.createVehicle(input)
       navigate(`/engins/${saved.vehicle.id}`, { replace: true })
     } catch (err) {
+      if (isQueued(err)) {
+        setFlash(err.message)
+        return navigate('/engins', { replace: true })
+      }
       setError(errorText(err))
       setBusy(false)
     }

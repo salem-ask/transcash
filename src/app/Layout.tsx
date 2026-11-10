@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useSession } from './session'
 import { can, type Permission } from '../domain/permissions'
 import { backend } from '../data'
+import { SyncBanner } from '../features/sync/SyncBanner'
 
 interface NavItem {
   to: string
@@ -37,7 +38,7 @@ function Icon({ d }: { d: string }) {
 }
 
 export function Layout() {
-  const { session } = useSession()
+  const { session, bundle } = useSession()
   const role = session?.user?.role
   const items = NAV.filter((n) => !n.perm || can(role, n.perm))
 
@@ -58,6 +59,7 @@ export function Layout() {
         </div>
       </header>
 
+      <SyncBanner timezone={bundle?.settings.timezone} />
       <main className="mx-auto max-w-3xl px-4 py-4">
         <Outlet />
       </main>

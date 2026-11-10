@@ -48,12 +48,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(async () => {
-    await backend.logout()
+    if (!backend.isDemo) {
+      const { offline } = await import('../data/offlineSetup')
+      const pending = offline.getState().pending.length
+      if (pending > 0) {
+        await offline.flush()
+        if (offline.getState().pending.length > 0)
+          throw new Error(`${offline.getState().pending.length} opération(s) pas encore envoyée(s) : retrouvez du réseau avant de vous déconnecter, sinon elles seraient perdues.`)
+      }
+      await backend.logout().catch(() => undefined) // hors ligne : on se déconnecte quand même sur ce téléphone
+      await offline.clearCache()
+    } else {
+      await backend.logout()
+    }
     // Le prochain utilisateur (téléphone partagé) repart de l'accueil
     window.location.hash = '#/'
     setBundle(null)
     setSessionState({ needsSetup: false, user: null, ownerName: null })
   }, [])
+
 
   return (
     <SessionContext.Provider value={{ session, bundle, error, setSession, setBundle, reload, logout }}>

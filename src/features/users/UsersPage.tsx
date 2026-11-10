@@ -15,7 +15,7 @@ export function UsersPage() {
   const [users, setUsers] = useState<User[] | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [showForm, setShowForm] = useState(false)
-  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   // Action en cours sur une fiche : saisie d'un nouveau mot de passe ou confirmation de désactivation
   const [pending, setPending] = useState<{ id: string; kind: 'password' | 'deactivate'; value: string } | null>(null)

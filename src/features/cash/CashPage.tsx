@@ -8,7 +8,7 @@ import { addDays, formatDay, todayIn } from '../../domain/fleet'
 import { DECIMALS, formatMoney, parseAmount } from '../../domain/money'
 import { METHOD_LABEL, receiptNumber } from '../../domain/receipt'
 import type { CashLine, CashMovement, Currency } from '../../domain/types'
-import { errorText, useLoad } from '../../lib/useLoad'
+import { msgOf, useLoad } from '../../lib/useLoad'
 
 const ENTRY_LABEL: Record<CashLine['type'], string> = {
   payment: 'Versement',
@@ -27,7 +27,7 @@ export function CashPage() {
   const [form, setForm] = useState<null | { id: string; kind: 'withdrawal' | 'deposit'; amount: string; currency: Currency; movedOn: string; note: string; editing: boolean }>(null)
   const [cancelId, setCancelId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
-  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
   if (error) return <Alert>{error}</Alert>
@@ -54,7 +54,7 @@ export function CashPage() {
       setReason('')
       setMsg({ kind: 'success', text: success })
     } catch (e) {
-      setMsg({ kind: 'error', text: errorText(e) })
+      setMsg(msgOf(e))
     } finally {
       setBusy(false)
     }

@@ -10,6 +10,8 @@ import { DECIMALS, formatMoney, parseAmount } from '../../domain/money'
 import { can } from '../../domain/permissions'
 import type { Currency, Driver, Expense, LedgerPayload, Vehicle, VehicleBreakdown } from '../../domain/types'
 import { errorText } from '../../lib/useLoad'
+import { isQueued } from '../../data/offline'
+import { setFlash } from '../../lib/flash'
 import { DayChecklist } from '../payments/DayChecklist'
 
 const CATEGORIES = Object.keys(EXPENSE_LABEL) as ExpenseCategory[]
@@ -114,6 +116,10 @@ export function ExpenseFormPage() {
       else await backend.createExpense(input)
       navigate('/depenses', { replace: true })
     } catch (err) {
+      if (isQueued(err)) {
+        setFlash(err.message)
+        return navigate('/depenses', { replace: true })
+      }
       setError(errorText(err))
       setBusy(false)
     }

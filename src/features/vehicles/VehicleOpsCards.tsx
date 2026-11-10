@@ -7,9 +7,9 @@ import { Alert, Button, ButtonLink, Card, Field, Segmented, Spinner } from '../.
 import { REMINDER_LABEL, reminderName, type ReminderKind } from '../../domain/finance'
 import { addDays, daysBetween, formatDay } from '../../domain/fleet'
 import type { Reminder, Vehicle, VehicleBreakdown } from '../../domain/types'
-import { errorText, useLoad } from '../../lib/useLoad'
+import { msgOf, useLoad } from '../../lib/useLoad'
 
-type Msg = { kind: 'error' | 'success'; text: string } | null
+type Msg = { kind: 'error' | 'success' | 'info'; text: string } | null
 
 /** Versements, dépenses et bénéfice du mois pour cet engin. */
 export function VehicleFinanceCard({ vehicle, canExpense }: { vehicle: Vehicle; canExpense: boolean }) {
@@ -65,7 +65,7 @@ export function BreakdownsCard({ vehicle, today, canEdit, canExpense, onChange }
       setMsg({ kind: 'success', text: success })
       onChange?.()
     } catch (e) {
-      setMsg({ kind: 'error', text: errorText(e) })
+      setMsg(msgOf(e))
     } finally {
       setBusy(false)
     }
@@ -200,7 +200,7 @@ export function RemindersCard({ vehicle, canEdit }: { vehicle: Vehicle; canEdit:
       setRenew(null)
       setMsg({ kind: 'success', text: success })
     } catch (e) {
-      setMsg({ kind: 'error', text: errorText(e) })
+      setMsg(msgOf(e))
     } finally {
       setBusy(false)
     }

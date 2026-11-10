@@ -18,6 +18,7 @@ import { CashPage } from '../features/cash/CashPage'
 import { RemindersPage } from '../features/reminders/RemindersPage'
 import { AuditPage } from '../features/audit/AuditPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
+import { SyncPage } from '../features/sync/SyncPage'
 import { VehiclesPage } from '../features/vehicles/VehiclesPage'
 import { VehicleFormPage } from '../features/vehicles/VehicleFormPage'
 import { VehicleDetailPage } from '../features/vehicles/VehicleDetailPage'
@@ -33,7 +34,7 @@ function Guard({ perm, children }: { perm: Permission; children: ReactNode }) {
 }
 
 function Root() {
-  const { session, error, reload } = useSession()
+  const { session, bundle, error, reload } = useSession()
 
   if (error && !session)
     return (
@@ -47,6 +48,8 @@ function Root() {
   if (!session) return <Spinner label="Démarrage…" />
   if (session.needsSetup) return <SetupPage />
   if (!session.user) return <LoginPage />
+  // Les écrans ont besoin des paramètres (devise, fuseau horaire) : on les attend
+  if (!bundle) return <Spinner label="Chargement…" />
 
   return (
     <Routes>
@@ -72,6 +75,7 @@ function Root() {
         <Route path="echeances" element={<Guard perm="vehicles.view"><RemindersPage /></Guard>} />
         <Route path="rapports" element={<Guard perm="reports.view"><ReportsPage /></Guard>} />
         <Route path="journal" element={<Guard perm="audit.view"><AuditPage /></Guard>} />
+        <Route path="synchronisation" element={<SyncPage />} />
         <Route path="compte" element={<AccountPage />} />
         <Route path="menu" element={<MenuPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

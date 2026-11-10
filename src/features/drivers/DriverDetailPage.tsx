@@ -7,7 +7,7 @@ import { Alert, BackLink, Button, Card, Field, Spinner } from '../../components/
 import { formatDay, todayIn } from '../../domain/fleet'
 import { can } from '../../domain/permissions'
 import type { DriverDetail } from '../../domain/types'
-import { errorText, useLoad } from '../../lib/useLoad'
+import { msgOf, useLoad } from '../../lib/useLoad'
 import { LedgerView } from '../payments/LedgerView'
 
 export function DriverDetailPage() {
@@ -21,7 +21,7 @@ export function DriverDetailPage() {
   const ledger = useLoad(() => backend.getLedger(id!), [id])
   const [panel, setPanel] = useState<null | 'account' | 'deactivate'>(null)
   const [password, setPassword] = useState('')
-  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
   if (error) return <Alert>{error}</Alert>
@@ -37,7 +37,7 @@ export function DriverDetailPage() {
       setPassword('')
       setMsg({ kind: 'success', text: success })
     } catch (e) {
-      setMsg({ kind: 'error', text: errorText(e) })
+      setMsg(msgOf(e))
     } finally {
       setBusy(false)
     }

@@ -4,6 +4,8 @@ import { backend } from '../../data'
 import { Alert, BackLink, Button, Card, Field, Spinner, TextArea } from '../../components/ui'
 import type { DriverDetail, DriverInput } from '../../domain/types'
 import { errorText } from '../../lib/useLoad'
+import { isQueued } from '../../data/offline'
+import { setFlash } from '../../lib/flash'
 
 const EMPTY: Required<Omit<DriverInput, 'active'>> = { name: '', phone: '', idNumber: '', licenseNumber: '', address: '', notes: '' }
 
@@ -36,6 +38,10 @@ export function DriverFormPage() {
       const saved = original ? await backend.updateDriver(original.driver.id, form) : await backend.createDriver(form)
       navigate(`/chauffeurs/${saved.driver.id}`, { replace: true })
     } catch (err) {
+      if (isQueued(err)) {
+        setFlash(err.message)
+        return navigate('/chauffeurs', { replace: true })
+      }
       setError(errorText(err))
       setBusy(false)
     }

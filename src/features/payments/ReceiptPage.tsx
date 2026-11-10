@@ -11,7 +11,7 @@ import { can } from '../../domain/permissions'
 import { METHOD_LABEL, receiptNumber, receiptText, smsLink, whatsappLink } from '../../domain/receipt'
 import type { LedgerPayload, PaymentDetail } from '../../domain/types'
 import { formatDateTime } from '../../lib/format'
-import { errorText, useLoad } from '../../lib/useLoad'
+import { msgOf, useLoad } from '../../lib/useLoad'
 
 /** Reçu d'un versement : détail, envoi WhatsApp / SMS, annulation. */
 export function ReceiptPage() {
@@ -23,7 +23,7 @@ export function ReceiptPage() {
   const [ledger, setLedger] = useState<LedgerPayload | null>(null)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [reason, setReason] = useState('')
-  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(
     params.get('nouveau') ? { kind: 'success', text: 'Versement enregistré' } : null,
   )
   const [busy, setBusy] = useState(false)
@@ -65,7 +65,7 @@ export function ReceiptPage() {
       setCancelOpen(false)
       setMsg({ kind: 'success', text: 'Versement annulé : les journées concernées sont de nouveau dues' })
     } catch (err) {
-      setMsg({ kind: 'error', text: errorText(err) })
+      setMsg(msgOf(err))
     } finally {
       setBusy(false)
     }
