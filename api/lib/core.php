@@ -20,6 +20,11 @@ function config(): array
             throw new HttpError(500, "Configuration absente : copier api/config.example.php en api/config.php");
         }
         $config = require $file;
+        $c = $config['db'] ?? [];
+        if (in_array($c['name'] ?? '', ['', 'NOM_DE_LA_BASE'], true) || in_array($c['pass'] ?? '', ['MOT_DE_PASSE'], true)) {
+            $config = null;
+            throw new HttpError(500, "Configuration incomplète : remplir le nom de la base, l'utilisateur et le mot de passe dans api/config.php");
+        }
     }
     return $config;
 }
@@ -29,16 +34,22 @@ function db(): PDO
     static $pdo = null;
     if ($pdo === null) {
         $c = config()['db'];
-        $pdo = new PDO(
-            "mysql:host={$c['host']};dbname={$c['name']};charset=utf8mb4",
-            $c['user'],
-            $c['pass'],
-            [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false,
-            ]
-        );
+        try {
+            $pdo = new PDO(
+                "mysql:host={$c['host']};dbname={$c['name']};charset=utf8mb4",
+                $c['user'],
+                $c['pass'],
+                [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::ATTR_EMULATE_PREPARES => false,
+                ]
+            );
+        } catch (PDOException $e) {
+            // Erreur fréquente au premier déploiement : message clair, sans dévoiler les identifiants
+            error_log('[TransCash] connexion MySQL : ' . $e->getMessage());
+            throw new HttpError(500, "Connexion à la base de données impossible : vérifier le nom de la base, l'utilisateur et le mot de passe dans api/config.php");
+        }
         $pdo->exec("SET time_zone = '+00:00'");
     }
     return $pdo;
