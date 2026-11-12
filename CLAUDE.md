@@ -237,7 +237,7 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Prévisualisation en mode démo (artefact)
 - [x] Déploiement sur Hostinger : https://transcash.bookline.digital, depuis la branche GitHub `hostinger`
       (redéploiement automatique à chaque push) ; base `u977986808_transcash`
-- [ ] Écran d'installation à compléter par le propriétaire (identifiants de la base), puis création du compte principal
+- [x] Installation faite par le propriétaire le 2026-11-12 (base reliée, tables créées) — application en service
 
 ### Phase 1 — Authentification, tableau de bord, paramètres ✅
 - [x] Installation : création du compte principal (entreprise + super admin), une seule fois
