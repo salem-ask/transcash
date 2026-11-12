@@ -30,19 +30,27 @@ npm run lint
 
 ## Déploiement sur Hostinger
 
-1. **Base de données** — hPanel › *Bases de données MySQL* : créer une base et un utilisateur.
-   Les tables sont créées automatiquement au premier appel de l'API (pas besoin de phpMyAdmin).
-2. **Build** — sur votre ordinateur : `npm install && npm run build`. Le dossier `dist/` contient
-   l'interface **et** l'API (`dist/api`), sans fichier de configuration.
-3. **Envoi** — hPanel › *Gestionnaire de fichiers* (ou FTP) : envoyer **le contenu** de `dist/`
-   dans `public_html/` (ou dans un sous-dossier).
-4. **Configuration** — dans `public_html/api/`, copier `config.example.php` en `config.php` et
-   remplir nom de base, utilisateur et mot de passe. Ce fichier ne doit jamais être mis sur GitHub.
-5. **HTTPS** — activer le certificat SSL gratuit dans hPanel (le cookie de session devient alors sécurisé).
+Prérequis : **PHP 8.1 ou plus** (hPanel › *Avancé* › *Configuration PHP* ; 8.2 ou 8.3 conseillé)
+et le **certificat SSL** actif sur le domaine (le site force le HTTPS).
+
+1. **Base de données** — hPanel › *Bases de données* › *Gestion* : créer une base et un utilisateur
+   (noter le nom de la base, l'utilisateur et le mot de passe). Les tables sont créées
+   **automatiquement** au premier appel de l'API (pas besoin de phpMyAdmin).
+2. **Paquet** — `npm install && npm run build`, puis compresser **le contenu** de `dist/`
+   (avec les fichiers cachés `.htaccess`) en un fichier ZIP.
+3. **Envoi** — hPanel › *Fichiers* › *Gestionnaire de fichiers* : ouvrir le dossier du site
+   (pour un sous-domaine, celui indiqué dans *Domaines* › *Sous-domaines*), y envoyer le ZIP,
+   clic droit › *Extraire* dans ce même dossier, puis supprimer le ZIP.
+   On doit voir `index.html`, `assets/`, `api/` et `.htaccess` directement dans le dossier du site.
+4. **Configuration** — dans `api/`, créer `config.php` à partir de `config.example.php` (clic droit ›
+   *Copier*, puis *Renommer*) et remplir nom de base, utilisateur et mot de passe
+   (*Modifier* dans le gestionnaire de fichiers). Ce fichier ne doit jamais être mis sur GitHub.
+5. **Vérification** — `https://votre-domaine/api/health` doit répondre `{"ok":true}`.
+   Sinon le message indique quoi corriger (configuration absente, incomplète, ou base refusée).
 6. **Premier lancement** — ouvrir le site : l'écran « Créons votre compte principal » apparaît
    une seule fois pour créer l'entreprise et le compte super administrateur.
 
-**Mise à jour d'une installation existante :** importer dans phpMyAdmin, dans l'ordre, les fichiers de
-`api/migrations/` qui n'ont pas encore été appliqués (voir `api/migrations/README.md`), puis renvoyer `dist/`.
-
-Vérification rapide : `https://votre-domaine/api/health` doit répondre `{"ok":true}`.
+**Mise à jour d'une installation existante :** refaire les étapes 2 et 3 avec un ZIP **sans** `api/config.php`
+(le build n'en contient jamais) : les fichiers sont remplacés, la configuration reste, et l'API met
+la base à jour toute seule au premier appel (`schema.sql` rejouable). Les fichiers de `api/migrations/`
+ne servent plus qu'en secours (voir `api/migrations/README.md`).

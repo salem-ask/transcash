@@ -234,7 +234,9 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] API PHP (routeur, sessions, CSRF, anti force brute, journal des modifications)
 - [x] Prévisualisation en mode démo (artefact)
 - [~] Premier déploiement sur Hostinger : site `transcash.bookline.digital` et base `u977986808_transcash` créés ;
-      envoi des fichiers en attente (le réseau de la session bloque le serveur de fichiers Hostinger)
+      paquet `transcash-installation.zip` (build vérifié sur base neuve, `config.php` prérempli sauf mot de passe)
+      remis au propriétaire le 2026-11-12 pour envoi depuis son PC (gestionnaire de fichiers hPanel) ;
+      reste : extraction sur le serveur, mot de passe dans `api/config.php`, création du compte principal
 
 ### Phase 1 — Authentification, tableau de bord, paramètres ✅
 - [x] Installation : création du compte principal (entreprise + super admin), une seule fois
@@ -375,6 +377,9 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | idb-keyval au lieu de Dexie | File et cache simples (clé → valeur) : 1 Ko au lieu de ~90 Ko |
 | 2026-11-10 | Le service worker ne met pas l'API en cache (uniquement l'application) | Les données hors ligne sont gérées par la couche offline, avec des règles claires |
 | 2026-11-10 | Déploiement en pause : l'envoi des fichiers depuis la session est bloqué par le réseau ; à finir depuis l'ordinateur du propriétaire | Demande du propriétaire |
+| 2026-11-12 | Déploiement par ZIP via le gestionnaire de fichiers hPanel ; le paquet d'installation contient `api/config.php` prérempli, **sans** mot de passe (saisi sur le serveur) ; les ZIP de mise à jour n'en contiennent jamais | Le réseau de la session ne joint pas Hostinger ; le mot de passe ne passe ni par la conversation ni par le dépôt |
+| 2026-11-12 | L'API renvoie un message clair si `config.php` est absent, incomplet ou si MySQL refuse la connexion | Diagnostic du premier déploiement sans accès aux journaux du serveur |
+| 2026-11-12 | PHP 8.1 minimum sur l'hébergement (8.2/8.3 conseillé) | Le code utilise le type de retour `never` |
 
 ---
 
