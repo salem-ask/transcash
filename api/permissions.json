@@ -1,0 +1,122 @@
+{
+  "_comment": "Source unique des droits par rôle, lue par l'API PHP et par l'interface. Ne pas dupliquer ailleurs.",
+  "roles": {
+    "super_admin": {
+      "label": "Super administrateur"
+    },
+    "admin": {
+      "label": "Administrateur"
+    },
+    "accountant": {
+      "label": "Comptable"
+    },
+    "manager": {
+      "label": "Gestionnaire"
+    },
+    "driver": {
+      "label": "Chauffeur"
+    }
+  },
+  "permissions": {
+    "dashboard.view": [
+      "super_admin",
+      "admin",
+      "accountant",
+      "manager"
+    ],
+    "dashboard.own": [
+      "driver"
+    ],
+    "settings.view": [
+      "super_admin",
+      "admin",
+      "accountant",
+      "manager"
+    ],
+    "settings.edit": [
+      "super_admin",
+      "admin"
+    ],
+    "rates.edit": [
+      "super_admin",
+      "admin",
+      "accountant"
+    ],
+    "users.view": [
+      "super_admin",
+      "admin"
+    ],
+    "users.manage": [
+      "super_admin",
+      "admin"
+    ],
+    "vehicles.view": [
+      "super_admin",
+      "admin",
+      "accountant",
+      "manager"
+    ],
+    "vehicles.manage": [
+      "super_admin",
+      "admin",
+      "manager"
+    ],
+    "drivers.view": [
+      "super_admin",
+      "admin",
+      "accountant",
+      "manager"
+    ],
+    "drivers.manage": [
+      "super_admin",
+      "admin",
+      "manager"
+    ],
+    "payments.view": [
+      "super_admin",
+      "admin",
+      "accountant",
+      "manager"
+    ],
+    "payments.create": [
+      "super_admin",
+      "admin",
+      "accountant",
+      "manager"
+    ],
+    "payments.edit": [
+      "super_admin",
+      "admin",
+      "accountant"
+    ],
+    "days.mark": [
+      "super_admin",
+      "admin",
+      "accountant",
+      "manager"
+    ],
+    "expenses.manage": [
+      "super_admin",
+      "admin",
+      "accountant",
+      "manager"
+    ],
+    "cash.manage": [
+      "super_admin",
+      "admin",
+      "accountant"
+    ],
+    "reports.view": [
+      "super_admin",
+      "admin",
+      "accountant"
+    ],
+    "audit.view": [
+      "super_admin",
+      "admin"
+    ],
+    "backup.download": [
+      "super_admin"
+    ]
+  }
+}
