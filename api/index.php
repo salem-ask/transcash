@@ -10,6 +10,7 @@ require __DIR__ . '/lib/rates.php';
 require __DIR__ . '/lib/fleet.php';
 require __DIR__ . '/lib/ledger.php';
 require __DIR__ . '/routes/auth.php';
+require __DIR__ . '/routes/install.php';
 require __DIR__ . '/routes/settings.php';
 require __DIR__ . '/routes/users.php';
 require __DIR__ . '/routes/vehicles.php';
@@ -90,6 +91,19 @@ $routes = [
 ];
 
 try {
+    // Première installation : tant que la base n'est pas configurée, seul l'écran d'installation fonctionne
+    if (config_file() === null) {
+        if ($method !== 'GET' && ($_SERVER['HTTP_X_TRANSCASH'] ?? '') !== '1') {
+            throw new HttpError(403, 'Requête refusée');
+        }
+        if ($method === 'GET' && $path === '/auth/status') {
+            json_response(install_status());
+        }
+        if ($method === 'POST' && $path === '/install/config') {
+            json_response(install_config());
+        }
+        throw new HttpError(503, "Installation non terminée : ouvrez l'application pour configurer la base de données");
+    }
     ensure_schema();
     start_session();
     idempotency_replay();

@@ -11,13 +11,45 @@ final class HttpError extends Exception
     }
 }
 
+/**
+ * Emplacement de la configuration (identifiants de la base), par ordre de priorité :
+ * 1. variable d'environnement TRANSCASH_CONFIG (tests) ;
+ * 2. transcash-config.php HORS du dossier public (à côté de public_html) — écrit par l'écran d'installation,
+ *    jamais touché par les mises à jour du site ;
+ * 3. api/config.php (installation manuelle).
+ */
+function config_candidates(): array
+{
+    return array_values(array_filter([
+        getenv('TRANSCASH_CONFIG') ?: null,
+        external_config_path(),
+        __DIR__ . '/../config.php',
+    ]));
+}
+
+/** Dossier parent de public_html (ex. /home/u…/domains/site/) : non accessible depuis le web. */
+function external_config_path(): string
+{
+    return dirname(__DIR__, 3) . '/transcash-config.php';
+}
+
+function config_file(): ?string
+{
+    foreach (config_candidates() as $f) {
+        if (is_file($f)) {
+            return $f;
+        }
+    }
+    return null;
+}
+
 function config(): array
 {
     static $config = null;
     if ($config === null) {
-        $file = getenv('TRANSCASH_CONFIG') ?: __DIR__ . '/../config.php';
-        if (!is_file($file)) {
-            throw new HttpError(500, "Configuration absente : copier api/config.example.php en api/config.php");
+        $file = config_file();
+        if ($file === null) {
+            throw new HttpError(503, "Installation non terminée : ouvrez l'application pour configurer la base de données");
         }
         $config = require $file;
     }

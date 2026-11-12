@@ -20,6 +20,7 @@ async function remember(p: Promise<SessionState>): Promise<SessionState> {
 export const apiBackend: Backend = {
   isDemo: false,
   status: () => call<SessionState>('GET', '/auth/status'),
+  installConfig: (input) => call<SessionState>('POST', '/install/config', input),
   setup: (input) => remember(call<SessionState>('POST', '/auth/setup', input)),
   login: (login, password) => remember(call<SessionState>('POST', '/auth/login', { login, password })),
   logout: async () => {

@@ -4,6 +4,7 @@ import { Layout } from './Layout'
 import { Alert, Button, Spinner } from '../components/ui'
 import { LoginPage } from '../features/auth/LoginPage'
 import { SetupPage } from '../features/auth/SetupPage'
+import { InstallPage } from '../features/auth/InstallPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { UsersPage } from '../features/users/UsersPage'
@@ -46,6 +47,7 @@ function Root() {
       </div>
     )
   if (!session) return <Spinner label="Démarrage…" />
+  if (session.needsConfig) return <InstallPage />
   if (session.needsSetup) return <SetupPage />
   if (!session.user) return <LoginPage />
   // Les écrans ont besoin des paramètres (devise, fuseau horaire) : on les attend

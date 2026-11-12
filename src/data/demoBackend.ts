@@ -458,6 +458,9 @@ export const demoBackend: Backend = {
     await pause()
     return session(load())
   },
+  async installConfig() {
+    throw new BackendError(409, 'Déjà installé (mode démo)')
+  },
   async setup() {
     throw new BackendError(409, 'Le compte principal existe déjà (mode démo)')
   },

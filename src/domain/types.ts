@@ -18,6 +18,10 @@ export interface User {
 }
 
 export interface SessionState {
+  /** Premier lancement sur l'hébergement : la base de données n'est pas encore configurée */
+  needsConfig?: boolean
+  /** Nom de base proposé par le serveur (ex. u977986808_transcash) */
+  suggestedDb?: string | null
   needsSetup: boolean
   user: User | null
   ownerName: string | null

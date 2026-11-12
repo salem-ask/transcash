@@ -39,6 +39,8 @@ import type {
 export interface Backend {
   readonly isDemo: boolean
   status(): Promise<SessionState>
+  /** Premier lancement : identifiants MySQL, enregistrés hors du dossier public du site */
+  installConfig(input: { dbName: string; dbUser: string; dbPass: string }): Promise<SessionState>
   setup(input: SetupInput): Promise<SessionState>
   login(login: string, password: string): Promise<SessionState>
   logout(): Promise<void>
