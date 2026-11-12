@@ -25,8 +25,6 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
-const UPCOMING = [{ title: 'Hors connexion, application installable', phase: 6 }]
-
 /** Cette semaine (lundi → aujourd'hui) : attendu, payé, recouvrement. */
 function WeekCard({ today }: { today: string }) {
   const week = periodPresets(today)[0]
@@ -225,19 +223,6 @@ export function DashboardPage() {
           <Alert kind="info">Aucun taux disponible. Saisissez-en un dans les paramètres.</Alert>
         )}
       </Card>
-
-      {!isDriver && (
-        <Card title="Bientôt disponible">
-          <ul className="divide-y divide-line">
-            {UPCOMING.map((m) => (
-              <li key={m.title} className="flex items-center justify-between py-2 text-sm">
-                <span>{m.title}</span>
-                <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-soft">Phase {m.phase}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
     </div>
   )
 }
