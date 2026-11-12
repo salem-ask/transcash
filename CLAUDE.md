@@ -166,7 +166,7 @@ transcash/
 │   ├── lib/                # core (BDD, JSON, journal), auth, taux, fleet (dates, montants), ledger (dettes)
 │   ├── routes/             # auth, settings (+ taux), users, vehicles, drivers, payments (+ journées), finance (dépenses, caisse, immobilisations, échéances, journal), dashboard
 │   └── tests/api_test.php  # test d'intégration (base de TEST vidée)
-├── scripts/                # copy-api.mjs, preview-artifact.mjs
+├── scripts/                # copy-api.mjs, preview-artifact.mjs, publish-hostinger.sh (publication)
 └── src/
     ├── app/                # App (routes), Layout (navigation), session (contexte)
     ├── components/         # ui.tsx (Button, Field, Card…), Money.tsx
@@ -207,11 +207,13 @@ TRANSCASH_CONFIG=/chemin/config.test.php npm run test:api   # tests API (base de
 npm run lint             # vérification du code
 npm run build            # build Hostinger → dist/ (interface + api/, sans config.php)
 npm run build:preview    # prévisualisation démo → preview/artifact.html
+npm run publish:hostinger  # mise en ligne : branche « hostinger » → redéploiement automatique
 ```
 
-**Déploiement (Hostinger) :** voir README.md. En bref : créer la base MySQL, envoyer le contenu de `dist/`
-dans `public_html/`, créer `public_html/api/config.php` à partir de `config.example.php`, ouvrir le site :
-le schéma s'installe tout seul au premier appel, puis on crée le compte principal.
+**Déploiement (Hostinger) :** `npm run publish:hostinger` construit l'application et la pousse sur la branche
+`hostinger` (uniquement les fichiers construits, aucun secret) ; Hostinger redéploie automatiquement.
+Premier lancement : l'**écran d'installation** demande les identifiants MySQL et les enregistre dans
+`transcash-config.php`, **à côté de** `public_html` (invisible depuis le web, jamais écrasé) ; le schéma s'installe seul.
 Site prévu : **https://transcash.bookline.digital** (compte Hostinger `u977986808`, base `u977986808_transcash`,
 hôte `localhost` depuis l'application ; le mot de passe n'est jamais dans le dépôt).
 
@@ -233,8 +235,9 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [x] Schéma MySQL multi-tenant (owners, users, settings, exchange_rates, audit_log, login_attempts)
 - [x] API PHP (routeur, sessions, CSRF, anti force brute, journal des modifications)
 - [x] Prévisualisation en mode démo (artefact)
-- [~] Premier déploiement sur Hostinger : site `transcash.bookline.digital` et base `u977986808_transcash` créés ;
-      envoi des fichiers en attente (le réseau de la session bloque le serveur de fichiers Hostinger)
+- [x] Déploiement sur Hostinger : https://transcash.bookline.digital, depuis la branche GitHub `hostinger`
+      (redéploiement automatique à chaque push) ; base `u977986808_transcash`
+- [ ] Écran d'installation à compléter par le propriétaire (identifiants de la base), puis création du compte principal
 
 ### Phase 1 — Authentification, tableau de bord, paramètres ✅
 - [x] Installation : création du compte principal (entreprise + super admin), une seule fois
@@ -375,6 +378,8 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | idb-keyval au lieu de Dexie | File et cache simples (clé → valeur) : 1 Ko au lieu de ~90 Ko |
 | 2026-11-10 | Le service worker ne met pas l'API en cache (uniquement l'application) | Les données hors ligne sont gérées par la couche offline, avec des règles claires |
 | 2026-11-10 | Déploiement en pause : l'envoi des fichiers depuis la session est bloqué par le réseau ; à finir depuis l'ordinateur du propriétaire | Demande du propriétaire |
+| 2026-11-12 | **Déploiement par GitHub** : branche `hostinger` = application construite, déployée et redéployée automatiquement par Hostinger | Choix du propriétaire (pas d'ouverture réseau de la session) |
+| 2026-11-12 | Écran d'installation au premier lancement ; configuration hors du dossier public, droits 600, étape impossible ensuite | Aucun secret sur GitHub, aucune manipulation de fichiers pour le propriétaire |
 
 ---
 

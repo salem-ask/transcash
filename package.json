@@ -10,7 +10,8 @@
     "build:preview": "tsc -b && vite build --mode preview && node scripts/preview-artifact.mjs",
     "test": "vitest run",
     "test:api": "php api/tests/api_test.php",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "publish:hostinger": "bash scripts/publish-hostinger.sh"
   },
   "dependencies": {
     "idb-keyval": "^6.2.1",
