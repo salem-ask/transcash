@@ -185,6 +185,10 @@ function vehicles_update(string $id): array
         $old = find_vehicle($u['owner_id'], $id, true);
         $f = vehicle_input($d + ['type' => $old['type']], $old);
         assert_plate_free($u['owner_id'], $f['plate'], $id);
+        $before = $old; // pour le journal
+        if (array_key_exists('serviceDate', $d) && $d['serviceDate'] !== $old['service_date']) {
+            $old['service_date'] = change_service_date($u, $old, (string)$d['serviceDate']);
+        }
         $amount = array_key_exists('dailyAmount', $d) ? valid_amount($d['dailyAmount']) : (int)$old['daily_amount'];
         $currency = array_key_exists('currency', $d) ? valid_currency($d['currency']) : $old['currency'];
 
@@ -209,13 +213,53 @@ function vehicles_update(string $id): array
             );
         }
         $new = find_vehicle($u['owner_id'], $id);
-        audit($u['owner_id'], $u['id'], 'vehicle', $id, 'update', audit_fields($old), audit_fields($new));
+        audit($u['owner_id'], $u['id'], 'vehicle', $id, 'update', audit_fields($before), audit_fields($new));
         db()->commit();
     } catch (Throwable $e) {
         db()->rollBack();
         throw $e;
     }
     return vehicle_detail($u['owner_id'], $id);
+}
+
+/**
+ * Change la date de mise en service (à appeler DANS une transaction). Reculer : le premier montant journalier
+ * s'applique dès la nouvelle date. Avancer : refusé s'il existe déjà une affectation, un versement, une marque
+ * ou une immobilisation avant la nouvelle date. Retourne la nouvelle date.
+ */
+function change_service_date(array $u, array $v, string $value): string
+{
+    $service = valid_date($value, 'Date de mise en service');
+    $today = today_for(load_settings($u['owner_id'])['timezone']);
+    if ($service > $today) {
+        throw new HttpError(422, 'La mise en service ne peut pas être dans le futur');
+    }
+    $id = $v['id'];
+    if ($service > $v['service_date']) {
+        $first = query(
+            "SELECT MIN(x) FROM (
+               SELECT MIN(start_date) AS x FROM assignments WHERE vehicle_id = ?
+               UNION ALL SELECT MIN(a.day) FROM payment_allocations a JOIN payments p ON p.id = a.payment_id AND p.cancelled_at IS NULL WHERE a.vehicle_id = ?
+               UNION ALL SELECT MIN(day) FROM day_marks WHERE vehicle_id = ? AND deleted_at IS NULL
+               UNION ALL SELECT MIN(start_date) FROM breakdowns WHERE vehicle_id = ? AND deleted_at IS NULL
+             ) t",
+            [$id, $id, $id, $id]
+        )->fetchColumn();
+        if ($first && $service > $first) {
+            throw new HttpError(422, "L'engin a déjà de l'activité le $first (chauffeur, versement ou journée) : la mise en service ne peut pas être après cette date");
+        }
+        // Montants : celui en vigueur à la nouvelle date devient le premier ; les plus anciens ne servent plus
+        $keep = query('SELECT id FROM vehicle_amounts WHERE vehicle_id = ? AND effective_from <= ? ORDER BY effective_from DESC LIMIT 1', [$id, $service])->fetchColumn();
+        if ($keep) {
+            query('DELETE FROM vehicle_amounts WHERE vehicle_id = ? AND effective_from < ? AND id <> ?', [$id, $service, $keep]);
+            query('UPDATE vehicle_amounts SET effective_from = ? WHERE id = ?', [$service, $keep]);
+        }
+    } else {
+        // Reculer : le premier montant s'applique dès la nouvelle date
+        query('UPDATE vehicle_amounts SET effective_from = ? WHERE vehicle_id = ? ORDER BY effective_from LIMIT 1', [$service, $id]);
+    }
+    query('UPDATE vehicles SET service_date = ?, updated_by = ? WHERE id = ?', [$service, $u['id'], $id]);
+    return $service;
 }
 
 function audit_fields(array $row): array
