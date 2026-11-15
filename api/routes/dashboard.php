@@ -36,11 +36,12 @@ function today_lines(array $u, array $s, string $today): array
             'driverId' => $r['d_id'],
             'driverName' => $r['d_name'],
             'status' => $status,
-            'amount' => $expected ?: (amount_from_history($v['amounts'], $today)['amount'] ?? 0),
+            'amount' => $expected ?: ($e['objective'] ?: (amount_from_history($v['amounts'], $today)['amount'] ?? 0)),
             'paid' => $paid,
             'remaining' => $remaining,
             'state' => pay_state($expected, $paid, $remaining),
             'currency' => $e['currency'],
+            'free' => $e['free'],
         ];
     }
     usort($lines, fn($a, $b) => strcmp($a['vehicleName'], $b['vehicleName']));

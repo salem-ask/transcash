@@ -13,7 +13,7 @@ if (!$configFile || !is_file($configFile)) {
 $config = require $configFile;
 $c = $config['db'];
 $pdo = new PDO("mysql:host={$c['host']};dbname={$c['name']};charset=utf8mb4", $c['user'], $c['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-foreach (['idempotency_keys', 'schema_state', 'reminders', 'cash_movements', 'expenses', 'breakdowns', 'payment_allocations', 'payments', 'day_marks', 'assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
+foreach (['payment_modes', 'idempotency_keys', 'schema_state', 'reminders', 'cash_movements', 'expenses', 'breakdowns', 'payment_allocations', 'payments', 'day_marks', 'assignments', 'vehicle_amounts', 'drivers', 'vehicles', 'audit_log', 'login_attempts', 'exchange_rates', 'settings', 'users', 'owners'] as $t) {
     $pdo->exec("DROP TABLE IF EXISTS $t");
 }
 $pdo->exec((string)file_get_contents(__DIR__ . '/../schema.sql'));
@@ -21,6 +21,7 @@ $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/002_engins_chauff
 $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/003_versements_dettes.sql'));
 $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/004_depenses_caisse_pannes.sql'));
 $pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/005_hors_connexion.sql'));
+$pdo->exec((string)file_get_contents(__DIR__ . '/../migrations/006_mode_versement.sql'));
 
 $port = 8765;
 $root = realpath(__DIR__ . '/..');
@@ -459,6 +460,31 @@ check('sauvegarde complète (super admin), sans mots de passe', $s === 200 && $r
     && !str_contains(json_encode($r), 'password_hash'), array_keys($r));
 [$s] = call('compta', 'GET', '/backup');
 check('sauvegarde réservée au super admin', $s === 403);
+
+echo "Mode de versement libre\n";
+[$s, $before] = call('boss', 'GET', "/drivers/$eric/ledger");
+[$s] = call('compta', 'PUT', '/settings', ['paymentMode' => 'free', 'paymentModeFrom' => $day(0)]);
+check('le comptable ne change pas le mode de versement', $s === 403);
+[$s, $r] = call('boss', 'PUT', '/settings', ['paymentMode' => 'free', 'paymentModeFrom' => $day(0)]);
+check('mode libre activé à partir d\'aujourd\'hui', $s === 200 && $r['settings']['paymentMode'] === 'free' && $r['settings']['paymentModeFrom'] === $day(0), $r['settings'] ?? $r);
+[$s, $r] = call('boss', 'GET', "/drivers/$eric/ledger");
+$t = current(array_filter($r['days'], fn($d) => $d['date'] === $day(0)));
+check('aujourd\'hui : rien de dû, objectif indicatif conservé', $t['free'] === true && $t['expected'] === 0 && $t['objective'] === 50000, $t);
+check('les dettes d\'avant le changement restent', ($r['summary']['arrears']['CDF'] ?? 0) === ($before['summary']['arrears']['CDF'] ?? 0), [$before['summary'], $r['summary']]);
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 73500, 'currency' => 'CDF', 'method' => 'cash',
+    'days' => [['date' => $day(0), 'vehicleId' => $bus]]]);
+check('montant libre accepté (au-delà de l\'objectif)', $s === 200 && $r['allocations'][0]['amount'] === 73500, $r);
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 500, 'currency' => 'USD', 'method' => 'mobile_money',
+    'days' => [['date' => $day(0), 'vehicleId' => $bus]]]);
+check('deuxième versement le même jour, converti', $s === 200 && $r['allocations'][0]['amount'] === 14500, $r);
+[$s, $r] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 100, 'currency' => 'CDF', 'method' => 'cash',
+    'days' => [['date' => $day(0), 'vehicleId' => $bus], ['date' => $day(-1), 'vehicleId' => $bus]]]);
+check('montant libre : une seule journée par versement', $s === 422, $r);
+[$s, $r] = call('boss', 'GET', '/dashboard');
+$line = current(array_filter($r['lines'], fn($l) => $l['vehicleId'] === $bus));
+check('tableau de bord : jour libre, objectif affiché, pas de manque', $line['free'] === true && $line['remaining'] === 0 && $line['amount'] === 50000, $line);
+[$s, $r] = call('boss', 'PUT', '/settings', ['paymentMode' => 'fixed', 'paymentModeFrom' => $day(1)]);
+check('retour au montant fixe programmé pour demain', $s === 200 && $r['settings']['paymentMode'] === 'free' && $r['settings']['nextPaymentMode']['mode'] === 'fixed', $r['settings']);
 
 echo $failures === 0 ? "\nTous les tests API passent.\n" : "\n$failures test(s) en échec.\n";
 exit($failures === 0 ? 0 : 1);

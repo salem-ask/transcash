@@ -331,3 +331,15 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   created_at DATETIME NOT NULL,
   KEY idx_idem_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============ Mode de versement (fixe / libre) ============
+CREATE TABLE IF NOT EXISTS payment_modes (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  owner_id CHAR(36) NOT NULL,
+  mode ENUM('fixed','free') NOT NULL,
+  effective_from DATE NOT NULL,
+  created_by CHAR(36) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_mode_day (owner_id, effective_from),
+  CONSTRAINT fk_modes_owner FOREIGN KEY (owner_id) REFERENCES owners(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
