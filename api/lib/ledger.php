@@ -70,7 +70,41 @@ function load_marks(array $vehicleIds, string $from, string $to): array
 }
 
 /** Ce qui est attendu un jour donné pour un engin. */
+/**
+ * Mode de versement de l'entreprise à une date : « fixed » (montant fixe, dette si non payé) ou
+ * « free » (montant libre : rien n'est dû, le montant de l'engin n'est qu'un objectif indicatif).
+ * Historisé par date d'effet (table payment_modes) ; sans historique : « fixed ».
+ */
+function payment_mode_on(string $ownerId, string $date): string
+{
+    static $cache = [];
+    $cache[$ownerId] ??= query('SELECT mode, effective_from FROM payment_modes WHERE owner_id = ? ORDER BY effective_from', [$ownerId])->fetchAll();
+    $mode = 'fixed';
+    foreach ($cache[$ownerId] as $m) {
+        if ($m['effective_from'] <= $date) {
+            $mode = $m['mode'];
+        }
+    }
+    return $mode;
+}
+
+/**
+ * Ce qui est attendu un jour donné pour un engin. En mode libre, rien n'est dû :
+ * `expected` vaut 0 et `objective` garde le montant habituel (indicatif), `free` = true.
+ */
 function expected_for(array $v, string $date, array $defaultRest, ?array $mark): array
+{
+    $e = expected_for_fixed($v, $date, $defaultRest, $mark);
+    $e['objective'] = $e['expected'];
+    $e['free'] = false;
+    if ($e['kind'] === 'due' && isset($v['owner_id']) && payment_mode_on($v['owner_id'], $date) === 'free') {
+        $e['expected'] = 0;
+        $e['free'] = true;
+    }
+    return $e;
+}
+
+function expected_for_fixed(array $v, string $date, array $defaultRest, ?array $mark): array
 {
     $base = amount_from_history($v['amounts'], $date);
     $currency = ($mark && $mark['kind'] === 'override' && $mark['currency']) ? $mark['currency'] : ($base['currency'] ?? 'CDF');
@@ -152,6 +186,8 @@ function driver_ledger(array $settings, string $driverId, string $from, string $
                 'remaining' => $remaining,
                 'state' => pay_state($e['expected'], $p, $remaining),
                 'override' => $e['override'],
+                'free' => $e['free'],
+                'objective' => $e['objective'],
                 'reason' => $mark['reason'] ?? null,
             ];
         }

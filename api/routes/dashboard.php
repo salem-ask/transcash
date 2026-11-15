@@ -36,11 +36,12 @@ function today_lines(array $u, array $s, string $today): array
             'driverId' => $r['d_id'],
             'driverName' => $r['d_name'],
             'status' => $status,
-            'amount' => $expected ?: (amount_from_history($v['amounts'], $today)['amount'] ?? 0),
+            'amount' => $expected ?: ($e['objective'] ?: (amount_from_history($v['amounts'], $today)['amount'] ?? 0)),
             'paid' => $paid,
             'remaining' => $remaining,
             'state' => pay_state($expected, $paid, $remaining),
             'currency' => $e['currency'],
+            'free' => $e['free'],
         ];
     }
     usort($lines, fn($a, $b) => strcmp($a['vehicleName'], $b['vehicleName']));
@@ -98,8 +99,8 @@ function dashboard_get(): array
     // « amount » vaut le montant habituel même les jours non dus : on ne compte que les jours dus
     $expectedToday = 0;
     foreach ($lines as $l) {
-        if ($l['status'] !== 'due') {
-            continue;
+        if ($l['status'] !== 'due' || $l['free']) {
+            continue; // mode libre : l'objectif n'est pas un montant attendu
         }
         $v = convert_amount($l['amount'], $l['currency'], $base, $rate);
         if ($v === null) {

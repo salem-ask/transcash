@@ -219,18 +219,35 @@ function record_payment(array $u, array $d, string $method): string
                 $ledger[$day['vehicleId'] . '|' . $day['date']] = $day;
             }
             $selected = [];
+            $freeDay = null;
             foreach ($chosen as $i => $x) {
                 $key = ((string)($x['vehicleId'] ?? '')) . '|' . $dates[$i];
                 $day = $ledger[$key] ?? null;
                 if (!$day) {
                     throw new HttpError(422, "Le {$dates[$i]}, ce chauffeur ne conduisait pas cet engin");
                 }
+                if ($day['free']) {
+                    $freeDay = $day; // mode libre : tout le montant va sur ce jour, sans limite
+                    continue;
+                }
                 if ($day['remaining'] <= 0) {
                     throw new HttpError(422, "La journée du {$dates[$i]} ne doit rien (déjà payée, repos ou panne)");
                 }
                 $selected[$key] = $day;
             }
-            [$allocations, $leftover] = allocate_payment($amount, $currency, $rate, array_values($selected));
+            if ($freeDay !== null) {
+                if (count($chosen) !== 1) {
+                    throw new HttpError(422, 'Montant libre : un versement concerne une seule journée');
+                }
+                $converted = convert_amount($amount, $currency, $freeDay['currency'], $rate);
+                if ($converted === null) {
+                    throw new HttpError(422, 'Taux de change indisponible : saisissez un taux dans les paramètres');
+                }
+                $allocations = [['date' => $freeDay['date'], 'vehicleId' => $freeDay['vehicleId'], 'amount' => $converted, 'currency' => $freeDay['currency']]];
+                $leftover = 0;
+            } else {
+                [$allocations, $leftover] = allocate_payment($amount, $currency, $rate, array_values($selected));
+            }
             if ($leftover > 0) {
                 throw new HttpError(422, 'Le montant dépasse ce qui reste dû sur les journées choisies (surplus : '
                     . $leftover . ' ' . $currency . '). Choisissez une journée de plus, ou enregistrez le surplus comme versement exceptionnel.');
@@ -411,6 +428,8 @@ function vehicles_days(string $id): array
             'date' => $d, 'driver' => $driver, 'kind' => $driver || $e['kind'] !== 'due' ? $e['kind'] : 'no_driver',
             'expected' => $expected, 'currency' => $e['currency'], 'paid' => $p, 'remaining' => $remaining,
             'state' => pay_state($expected, $p, $remaining),
+            'free' => $e['free'],
+            'objective' => $driver ? $e['objective'] : 0,
             'breakdownId' => $mark['breakdown_id'] ?? null,
             'mark' => ($mark && !isset($mark['breakdown_id'])) ? ['kind' => $mark['kind'], 'amount' => $mark['amount'] === null ? null : (int)$mark['amount'], 'currency' => $mark['currency'], 'reason' => $mark['reason']] : null,
         ];

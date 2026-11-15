@@ -70,6 +70,7 @@ function reports_data(): array
                 $days[] = [
                     'vehicleId' => $v['id'], 'date' => $d, 'driverId' => $driverId,
                     'kind' => $e['kind'], 'expected' => $driverId ? $e['expected'] : 0, 'paid' => $p, 'currency' => $e['currency'],
+                    'free' => $e['free'], 'objective' => $driverId ? $e['objective'] : 0,
                 ];
             }
         }

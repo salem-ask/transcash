@@ -25,12 +25,33 @@ function public_settings(array $s): array
     ];
 }
 
+/** Mode de versement en vigueur aujourd'hui, date d'effet, et prochain changement prévu. */
+function payment_mode_info(string $ownerId, string $timezone): array
+{
+    $today = today_for($timezone);
+    $rows = query('SELECT mode, effective_from FROM payment_modes WHERE owner_id = ? ORDER BY effective_from', [$ownerId])->fetchAll();
+    $current = ['mode' => 'fixed', 'effective_from' => null];
+    $next = null;
+    foreach ($rows as $r) {
+        if ($r['effective_from'] <= $today) {
+            $current = $r;
+        } elseif ($next === null) {
+            $next = $r;
+        }
+    }
+    return [
+        'paymentMode' => $current['mode'],
+        'paymentModeFrom' => $current['effective_from'],
+        'nextPaymentMode' => $next ? ['mode' => $next['mode'], 'from' => $next['effective_from']] : null,
+    ];
+}
+
 function settings_get(): array
 {
     $u = require_user();
     $s = load_settings($u['owner_id']);
     return [
-        'settings' => public_settings($s),
+        'settings' => public_settings($s) + payment_mode_info($u['owner_id'], $s['timezone']),
         'rate' => public_rate(effective_rate($u['owner_id'], $s['rate_mode'])),
     ];
 }
@@ -65,6 +86,15 @@ function settings_update(): array
     $new = public_settings(load_settings($u['owner_id']));
     if ($new !== $old) {
         audit($u['owner_id'], $u['id'], 'settings', $u['owner_id'], 'update', $old, $new);
+    }
+    // Mode de versement (fixe / libre), à partir d'une date : les jours d'avant gardent leurs règles
+    if (isset($d['paymentMode'])) {
+        $mode = $d['paymentMode'] === 'free' ? 'free' : 'fixed';
+        $from = valid_date($d['paymentModeFrom'] ?? today_for($tz), "Date d'effet");
+        $before = payment_mode_info($u['owner_id'], $tz);
+        query('DELETE FROM payment_modes WHERE owner_id = ? AND effective_from >= ?', [$u['owner_id'], $from]);
+        query('INSERT INTO payment_modes (id, owner_id, mode, effective_from, created_by) VALUES (?, ?, ?, ?, ?)', [uuid(), $u['owner_id'], $mode, $from, $u['id']]);
+        audit($u['owner_id'], $u['id'], 'payment_mode', $u['owner_id'], 'update', $before, ['mode' => $mode, 'from' => $from]);
     }
     return settings_get();
 }
