@@ -140,7 +140,9 @@ filtre par `owner_id` de l'utilisateur connecté (multi-tenant).
   (engin ou paramètres), panne, ou montant exceptionnel (marque `day_marks`) ;
 - payé = somme des `payment_allocations` des versements non annulés ; reste = attendu − payé ;
 - dette = reste des jours passés ; avance = payé sur les jours futurs ; tout est recalculé à chaque lecture ;
-- immobilisations (`breakdowns`) = jours « panne » (via `withBreakdowns` / `load_marks`).
+- immobilisations (`breakdowns`) = jours « panne » (via `withBreakdowns` / `load_marks`) ;
+- **mode libre** (`payment_modes`, historisé par date, « fixed » par défaut) : un jour dû devient `free`,
+  `expected` = 0 et `objective` = montant habituel ; le versement va entièrement sur la journée choisie.
 
 **Caisse :** solde = versements non annulés (sauf `driver_expense`) + apports − dépenses payées par la caisse − retraits.
 
@@ -306,6 +308,12 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 - [ ] Restauration d'une sauvegarde depuis l'application (non demandée pour l'instant)
 - [ ] Notifications sur le téléphone pour les échéances
 
+### Évolutions après lancement
+- [x] **Mode de versement « montant libre »** (2026-11-15) : réglage d'entreprise (admin / super admin), désactivé par défaut ;
+      à partir d'une date choisie ; aucune dette, le montant journalier de l'engin devient un objectif indicatif ;
+      saisie simplifiée (journée + montant), plusieurs versements par jour ; dettes antérieures conservées ;
+      le chauffeur ne voit que ses versements (pas l'objectif)
+
 ### Questions ouvertes
 - Alertes d'échéance : affichées dans l'application uniquement (notifications téléphone : à décider).
 - Hors connexion : une saisie qui dépend d'une autre saisie hors ligne (ex. versement sur un chauffeur créé hors ligne)
@@ -380,6 +388,9 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-10 | Déploiement en pause : l'envoi des fichiers depuis la session est bloqué par le réseau ; à finir depuis l'ordinateur du propriétaire | Demande du propriétaire |
 | 2026-11-12 | **Déploiement par GitHub** : branche `hostinger` = application construite, déployée et redéployée automatiquement par Hostinger | Choix du propriétaire (pas d'ouverture réseau de la session) |
 | 2026-11-12 | Écran d'installation au premier lancement ; configuration hors du dossier public, droits 600, étape impossible ensuite | Aucun secret sur GitHub, aucune manipulation de fichiers pour le propriétaire |
+| 2026-11-15 | **Mode « montant libre »** optionnel, désactivé par défaut, activable par l'admin | Demande du propriétaire (certaines compagnies) |
+| 2026-11-15 | Mode libre : **jour sans versement = aucune dette** (1a) ; réglage **pour toute l'entreprise** (2a) ; **chauffeur voit seulement ses versements** (3a) | Choix du propriétaire |
+| 2026-11-15 | Changement de mode **à partir d'une date** (historique `payment_modes`) | Les dettes déjà dues ne disparaissent pas ; on peut revenir au montant fixe |
 
 ---
 
