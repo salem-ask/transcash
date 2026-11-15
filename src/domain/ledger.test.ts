@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allocate, driverLedger, summarize, totalIn, type DayMark, type LedgerVehicle } from './ledger'
+import { allocate, driverLedger, summarize, totalIn, withoutAllocations, type DayMark, type LedgerDay, type LedgerVehicle } from './ledger'
 import type { Assignment } from './types'
 
 const taxi: LedgerVehicle = {
@@ -101,5 +101,30 @@ describe('totaux multi-devises', () => {
     expect(totalIn({ CDF: 28500, USD: 1000 }, 'CDF', 2850)).toBe(57000)
     expect(totalIn({ USD: 1000 }, 'CDF', null)).toBeNull()
     expect(totalIn({}, 'CDF', null)).toBe(0)
+  })
+})
+
+describe('withoutAllocations (correction d\'un versement)', () => {
+  const day = (date: string, expected: number, paid: number): LedgerDay => ({
+    date, vehicleId: 'v', vehicleName: 'Bus', kind: 'due', expected, currency: 'CDF', paid, remaining: Math.max(expected - paid, 0),
+    state: paid >= expected ? 'paid' : paid > 0 ? 'partial' : 'unpaid', override: false, free: false, objective: expected, reason: null,
+  })
+  it('rend dues les journées payées par le versement corrigé', () => {
+    const days = [day('2026-11-01', 20000, 20000), day('2026-11-02', 20000, 25000 - 15000), day('2026-11-03', 20000, 0)]
+    const out = withoutAllocations(days, [
+      { vehicleId: 'v', date: '2026-11-01', amount: 20000 },
+      { vehicleId: 'v', date: '2026-11-02', amount: 5000 },
+    ])
+    expect(out.map((d) => [d.paid, d.remaining, d.state])).toEqual([
+      [0, 20000, 'unpaid'],
+      [5000, 15000, 'partial'],
+      [0, 20000, 'unpaid'],
+    ])
+    expect(days[0].paid).toBe(20000) // pas de modification de l'original
+  })
+  it('jour en montant libre : le payé baisse, rien ne devient dû', () => {
+    const free = { ...day('2026-11-04', 0, 30000), free: true, objective: 20000, state: 'paid' as const }
+    const [d] = withoutAllocations([free], [{ vehicleId: 'v', date: '2026-11-04', amount: 30000 }])
+    expect([d.paid, d.remaining, d.state]).toEqual([0, 0, 'none'])
   })
 })

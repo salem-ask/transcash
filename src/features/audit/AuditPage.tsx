@@ -9,11 +9,12 @@ import { errorText } from '../../lib/useLoad'
 const ENTITY: Record<string, string> = {
   owner: 'Entreprise', user: 'Compte', settings: 'Paramètres', exchange_rate: 'Taux de change', vehicle: 'Engin',
   driver: 'Chauffeur', assignment: 'Affectation', payment: 'Versement', day_mark: 'Journée', expense: 'Dépense',
-  cash_movement: 'Caisse', breakdown: 'Immobilisation', reminder: 'Échéance',
+  cash_movement: 'Caisse', breakdown: 'Immobilisation', reminder: 'Échéance', reset: 'Données', backup: 'Sauvegarde',
 }
 const ACTION: Record<string, string> = {
   create: 'créé', update: 'modifié', cancel: 'annulé', delete: 'supprimé', status: 'statut changé', end: 'terminé',
-  set: 'marqué', done: 'fait', password: 'mot de passe changé',
+  set: 'marqué', done: 'fait', password: 'mot de passe changé', correct: 'corrigé', export: 'téléchargée',
+  reset_operations: 'réinitialisées (opérations)', reset_all: 'réinitialisées (tout)',
 }
 
 /** Champs dont la valeur a changé entre ancienne et nouvelle version. */

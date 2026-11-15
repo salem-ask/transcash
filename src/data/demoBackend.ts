@@ -892,6 +892,29 @@ export const demoBackend: Backend = {
     save(s)
     return paymentDetail(s, p)
   },
+  async correctPayment(pid, input) {
+    await pause()
+    const s = load()
+    const u = need(s, 'payments.edit')
+    const existing = s.payments.find((p) => p.id === input.id)
+    if (existing) return paymentDetail(s, existing)
+    const old = s.payments.find((x) => x.id === pid) ?? fail(404, 'Versement introuvable')
+    if (old.cancelled) fail(422, 'Ce versement est annulé : il ne peut plus être corrigé')
+    if (old.method === 'driver_expense') fail(422, "Ce versement vient d'une dépense payée par le chauffeur : corrigez la dépense")
+    old.cancelled = true // ses journées redeviennent dues pour le nouveau versement
+    let p: DemoPayment
+    try {
+      p = recordPayment(s, u, { ...input, driverId: old.driverId }, input.method)
+    } catch (e) {
+      old.cancelled = false
+      throw e
+    }
+    const reason = input.reason?.trim()
+    old.cancelReason = `Corrigé : remplacé par le reçu N° ${String(p.receiptNo).padStart(6, '0')}${reason ? ` — ${reason}` : ''}`
+    audit(s, 'payment', old.id, 'correct', { receipt: old.receiptNo, amount: old.amount }, { receipt: p.receiptNo, amount: p.amount, reason })
+    save(s)
+    return paymentDetail(s, p)
+  },
   async vehicleDays(vid) {
     await pause()
     const s = load()
@@ -1164,6 +1187,24 @@ export const demoBackend: Backend = {
       format: 'transcash-backup', version: 1, exportedAt: nowIso(), demo: true,
       tables: { ...rest, users: users.map(({ password: _p, ...u }) => u) },
     }
+  },
+  async resetData(scope, confirm) {
+    await pause()
+    const s = load()
+    const u = need(s, 'data.reset')
+    if (confirm.trim().toLowerCase() !== 'supprimer') fail(422, 'Pour confirmer, tapez le mot « supprimer »')
+    const deleted: Record<string, number> = {
+      payments: s.payments.length, expenses: s.expenses.length, cash_movements: s.movements.length,
+      breakdowns: s.breakdowns.length, day_marks: s.marks.length, reminders: s.reminders.length, audit_log: s.audit.length,
+    }
+    Object.assign(s, { payments: [], expenses: [], movements: [], breakdowns: [], marks: [], reminders: [], audit: [] })
+    if (scope === 'all') {
+      Object.assign(deleted, { vehicles: s.vehicles.length, drivers: s.drivers.length, assignments: s.assignments.length, users: s.users.length - 1 })
+      Object.assign(s, { vehicles: [], drivers: [], assignments: [], users: s.users.filter((x) => x.id === u.id) })
+    }
+    audit(s, 'reset', u.ownerId, scope === 'all' ? 'reset_all' : 'reset_operations', null, { deleted })
+    save(s)
+    return { scope, backup: 'démo : sauvegarde téléchargée sur cet appareil', deleted }
   },
   async reportData(from, to) {
     await pause()

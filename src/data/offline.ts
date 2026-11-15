@@ -54,8 +54,8 @@ export class QueuedError extends BackendError {
 
 export const isQueued = (e: unknown): e is QueuedError => e instanceof QueuedError
 
-/** Écritures jamais mises en file : elles n'ont de sens qu'avec le serveur. */
-const NOT_QUEUEABLE = /^\/auth\//
+/** Écritures jamais mises en file : elles n'ont de sens qu'avec le serveur (connexion, réinitialisation). */
+const NOT_QUEUEABLE = /^\/(auth|admin)\//
 
 const OUTBOX = 'outbox'
 const REJECTED = 'rejected'

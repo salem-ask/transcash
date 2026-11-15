@@ -5,9 +5,10 @@ import { useSession } from '../../app/session'
 import { MoneyTotals } from '../../components/Money'
 import { Alert, BackLink, Button, Card, Field, Segmented, Select, Spinner, TextArea } from '../../components/ui'
 import { formatDay, todayIn } from '../../domain/fleet'
-import { allocate, dayKey, totalIn, type LedgerDay, type Totals } from '../../domain/ledger'
+import { allocate, dayKey, totalIn, withoutAllocations, type LedgerDay, type Totals } from '../../domain/ledger'
 import { DECIMALS, formatMoney, parseAmount } from '../../domain/money'
-import type { Currency, Driver, LedgerPayload, PaymentKind, PaymentMethod } from '../../domain/types'
+import type { Currency, Driver, LedgerPayload, NewPaymentInput, PaymentDetail, PaymentKind, PaymentMethod } from '../../domain/types'
+import { receiptNumber } from '../../domain/receipt'
 import { errorText } from '../../lib/useLoad'
 import { isQueued } from '../../data/offline'
 import { setFlash } from '../../lib/flash'
@@ -16,7 +17,10 @@ import { DayChecklist } from './DayChecklist'
 const keyOf = dayKey
 const toText = (amount: number, c: Currency) => (amount / 10 ** DECIMALS[c]).toString().replace('.', ',')
 
-/** Encaisser un versement : on choisit le chauffeur, puis les journées payées (ou un versement exceptionnel). */
+/**
+ * Encaisser un versement : on choisit le chauffeur, puis les journées payées (ou un versement exceptionnel).
+ * Avec ?corriger=<id> : correction d'un versement (pré-rempli ; l'ancien sera annulé et remplacé).
+ */
 export function NewPaymentPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
@@ -25,7 +29,10 @@ export function NewPaymentPage() {
   const today = todayIn(bundle!.settings.timezone)
 
   const [drivers, setDrivers] = useState<Driver[] | null>(null)
-  const [driverId, setDriverId] = useState(params.get('chauffeur') ?? '')
+  const correctId = params.get('corriger')
+  const [original, setOriginal] = useState<PaymentDetail | null>(null)
+  const [reason, setReason] = useState('')
+  const [driverId, setDriverId] = useState(correctId ? '' : (params.get('chauffeur') ?? ''))
   const [ledger, setLedger] = useState<LedgerPayload | null>(null)
   // « free » : mode montant libre (un montant pour une journée, sans dette) ; « daily » : journées cochées
   const [kind, setKind] = useState<PaymentKind | 'free'>('daily')
@@ -48,13 +55,42 @@ export function NewPaymentPage() {
     backend.listDrivers().then(setDrivers, (e) => setError(errorText(e)))
   }, [])
 
+  // Correction : on charge le versement d'origine, puis le chauffeur
+  useEffect(() => {
+    if (!correctId) return
+    backend.getPayment(correctId).then((p) => {
+      if (p.cancelled) return setError('Ce versement est annulé : il ne peut plus être corrigé')
+      if (p.method === 'driver_expense') return setError("Ce versement vient d'une dépense payée par le chauffeur : corrigez la dépense")
+      setOriginal(p)
+      setDriverId(p.driverId)
+    }, (e) => setError(errorText(e)))
+  }, [correctId])
+
   useEffect(() => {
     setLedger(null)
     setSelected(new Set())
     setAmountTouched(false)
     if (!driverId) return
-    backend.getLedger(driverId).then((l) => {
+    backend.getLedger(driverId).then((raw) => {
+      // Correction : les journées payées par l'ancien versement redeviennent disponibles
+      const l = original ? { ...raw, days: withoutAllocations(raw.days, original.allocations) } : raw
       setLedger(l)
+      if (original) {
+        const keys = original.allocations.map(keyOf)
+        const freeAlloc = l.days.find((d) => d.free && keys.includes(keyOf(d)))
+        setKind(original.kind === 'extra' ? 'extra' : freeAlloc ? 'free' : 'daily')
+        setFreeKey(freeAlloc ? keyOf(freeAlloc) : '')
+        setSelected(new Set(freeAlloc ? [] : keys))
+        setShowFuture(original.allocations.some((a) => a.date > l.today))
+        setAmountTouched(true)
+        setAmountText(toText(original.amount, original.currency))
+        setCurrency(original.currency)
+        setMethod(original.method)
+        setReference(original.reference ?? '')
+        setPaidOn(original.paidOn)
+        setNote(original.note ?? '')
+        return
+      }
       const todayDue = l.days.filter((d) => d.date === l.today && d.remaining > 0)
       setSelected(new Set(todayDue.map(keyOf)))
       // Mode montant libre : on propose directement la saisie libre sur la journée la plus récente
@@ -72,7 +108,7 @@ export function NewPaymentPage() {
       const firstCur = l.days.find((d) => d.remaining > 0)?.currency
       if (firstCur) setCurrency(firstCur)
     }, (e) => setError(errorText(e)))
-  }, [driverId])
+  }, [driverId, original])
 
   const rate = ledger?.rate?.rate ?? bundle?.rate?.rate ?? null
   const due = useMemo(() => (ledger?.days ?? []).filter((d) => d.kind === 'due' && d.remaining > 0), [ledger])
@@ -117,7 +153,7 @@ export function NewPaymentPage() {
     if (kind === 'free' && !freeDay) return setError('Choisissez la journée')
     setBusy(true)
     try {
-      const saved = await backend.createPayment({
+      const input: NewPaymentInput = {
         id: paymentId, driverId, kind: kind === 'extra' ? 'extra' : 'daily', amount, currency, method, paidOn,
         reference: method === 'cash' ? undefined : reference, note: note || undefined,
         days:
@@ -126,8 +162,9 @@ export function NewPaymentPage() {
             : kind === 'daily'
               ? chosen.map((d) => ({ date: d.date, vehicleId: d.vehicleId }))
               : undefined,
-      })
-      navigate(`/versements/${saved.id}?nouveau=1`, { replace: true })
+      }
+      const saved = original ? await backend.correctPayment(original.id, { ...input, reason: reason || undefined }) : await backend.createPayment(input)
+      navigate(`/versements/${saved.id}?${original ? 'corrige' : 'nouveau'}=1`, { replace: true })
     } catch (err) {
       if (isQueued(err)) {
         setFlash(err.message)
@@ -145,14 +182,20 @@ export function NewPaymentPage() {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <BackLink to="/versements">Versements</BackLink>
-      <h1 className="text-xl font-bold">Encaisser un versement</h1>
+      <BackLink to={correctId ? `/versements/${correctId}` : '/versements'}>{correctId ? 'Reçu' : 'Versements'}</BackLink>
+      <h1 className="text-xl font-bold">{original ? `Corriger le reçu ${receiptNumber(original.receiptNo)}` : 'Encaisser un versement'}</h1>
+      {original && (
+        <Alert kind="info">
+          Modifiez ce qui est faux (montant, journées, mode, date). À l'enregistrement, l'ancien reçu est annulé avec la mention « corrigé » et un
+          nouveau reçu le remplace. Tout reste dans le journal d'activité.
+        </Alert>
+      )}
 
       <Card>
         {drivers === null ? (
           <Spinner />
         ) : (
-          <Select label="Chauffeur" value={driverId} onChange={(e) => setDriverId(e.target.value)} required>
+          <Select label="Chauffeur" value={driverId} onChange={(e) => setDriverId(e.target.value)} required disabled={!!correctId}>
             <option value="">Choisir…</option>
             {drivers.map((d) => (
               <option key={d.id} value={d.id}>
@@ -162,7 +205,7 @@ export function NewPaymentPage() {
             ))}
           </Select>
         )}
-        {ledger && (
+        {ledger && !original && (
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
             <span>
               Dettes :{' '}
@@ -313,9 +356,14 @@ export function NewPaymentPage() {
             </div>
           </Card>
 
+          {original && (
+            <Card>
+              <Field label="Raison de la correction" placeholder="Facultatif — ex. mauvais montant" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={150} />
+            </Card>
+          )}
           {error && <Alert>{error}</Alert>}
           <Button type="submit" busy={busy} className="w-full" disabled={(kind === 'daily' && chosen.length === 0) || (kind === 'free' && !freeDay)}>
-            Enregistrer{amount ? ` ${formatMoney(amount, currency)}` : ''}
+            {original ? 'Enregistrer la correction' : 'Enregistrer'}{amount ? ` ${formatMoney(amount, currency)}` : ''}
           </Button>
           {kind === 'daily' && chosen.length > 0 && (
             <p className="text-center text-xs text-ink-soft">

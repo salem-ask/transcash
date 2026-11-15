@@ -24,7 +24,11 @@ export function ReceiptPage() {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [reason, setReason] = useState('')
   const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(
-    params.get('nouveau') ? { kind: 'success', text: 'Versement enregistré' } : null,
+    params.get('nouveau')
+      ? { kind: 'success', text: 'Versement enregistré' }
+      : params.get('corrige')
+        ? { kind: 'success', text: "Versement corrigé : l'ancien reçu est annulé, celui-ci le remplace" }
+        : null,
   )
   const [busy, setBusy] = useState(false)
 
@@ -197,9 +201,16 @@ export function ReceiptPage() {
               </div>
             </form>
           ) : (
-            <Button variant="ghost" className="w-full text-danger" onClick={() => setCancelOpen(true)}>
-              Annuler ce versement (erreur de saisie…)
-            </Button>
+            <div className="space-y-2">
+              {p.method !== 'driver_expense' && (
+                <ButtonLink to={`/versements/nouveau?corriger=${p.id}`} variant="secondary" className="w-full">
+                  Corriger ce versement
+                </ButtonLink>
+              )}
+              <Button variant="ghost" className="w-full text-danger" onClick={() => setCancelOpen(true)}>
+                Annuler ce versement (erreur de saisie…)
+              </Button>
+            </div>
           )}
         </Card>
       )}

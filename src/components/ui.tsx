@@ -213,9 +213,9 @@ export function BackLink({ to, children }: { to: string; children: ReactNode }) 
 }
 
 /** Lien présenté comme un bouton principal (évite un bouton dans un lien). */
-export function ButtonLink({ to, children }: { to: string; children: ReactNode }) {
+export function ButtonLink({ to, children, variant = 'primary', className = '' }: { to: string; children: ReactNode; variant?: keyof typeof VARIANTS; className?: string }) {
   return (
-    <Link to={to} className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 text-base font-semibold ${VARIANTS.primary}`}>
+    <Link to={to} className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 text-base font-semibold ${VARIANTS[variant]} ${className}`}>
       {children}
     </Link>
   )

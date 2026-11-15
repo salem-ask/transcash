@@ -81,6 +81,8 @@ export interface Backend {
   getPayment(id: string): Promise<PaymentDetail>
   createPayment(input: NewPaymentInput): Promise<PaymentDetail>
   cancelPayment(id: string, reason: string): Promise<PaymentDetail>
+  /** Corrige un versement : l'ancien est annulé (« corrigé »), le nouveau enregistré (même chauffeur) */
+  correctPayment(id: string, input: NewPaymentInput & { reason?: string }): Promise<PaymentDetail>
   vehicleDays(vehicleId: string): Promise<VehicleDays>
   markDay(vehicleId: string, input: MarkDayInput): Promise<VehicleDays>
 
@@ -112,6 +114,16 @@ export interface Backend {
 
   // Phase 6 : sauvegarde complète (super admin)
   backup(): Promise<unknown>
+  /** Réinitialisation (super admin) : « operations » ou « all » ; confirm = mot « supprimer » */
+  resetData(scope: ResetScope, confirm: string): Promise<ResetResult>
+}
+
+export type ResetScope = 'operations' | 'all'
+export interface ResetResult {
+  scope: ResetScope
+  /** Nom du fichier de sauvegarde gardé sur le serveur */
+  backup: string
+  deleted: Record<string, number>
 }
 
 /** Erreur lisible par l'utilisateur, avec le code HTTP correspondant. */

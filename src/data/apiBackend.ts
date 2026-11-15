@@ -1,4 +1,4 @@
-import type { Backend } from './backend'
+import type { Backend, ResetResult } from './backend'
 import { offline } from './offlineSetup'
 import type { ReportData } from '../domain/report'
 import type { AuditEntry, CashState, Expense, ExpenseList, Reminder, VehicleBreakdown, VehicleFinance, LedgerPayload, Payment, PaymentDetail, VehicleDays, Driver, DriverDetail, RatesBundle, SessionState, SettingsBundle, User, Vehicle, VehicleDetail } from '../domain/types'
@@ -58,6 +58,7 @@ export const apiBackend: Backend = {
   getPayment: (id) => call<PaymentDetail>('GET', `/payments/${id}`),
   createPayment: (input) => call<PaymentDetail>('POST', '/payments', input),
   cancelPayment: (id, reason) => call<PaymentDetail>('POST', `/payments/${id}/cancel`, { reason }),
+  correctPayment: (id, input) => call<PaymentDetail>('POST', `/payments/${id}/correct`, input),
   vehicleDays: (id) => call<VehicleDays>('GET', `/vehicles/${id}/days`),
   markDay: (id, input) => call<VehicleDays>('POST', `/vehicles/${id}/days`, input),
 
@@ -81,6 +82,7 @@ export const apiBackend: Backend = {
   cancelReminder: (id) => call<{ today: string; reminders: Reminder[] }>('POST', `/reminders/${id}/cancel`, {}),
   vehicleFinance: (id) => call<VehicleFinance>('GET', `/vehicles/${id}/finance`),
   backup: () => call<unknown>('GET', '/backup'),
+  resetData: (scope, confirm) => call<ResetResult>('POST', '/admin/reset', { scope, confirm }),
   reportData: (from, to) => call<ReportData>('GET', `/reports/data?${qs({ from, to })}`),
   auditLog: (p) => call<{ entries: AuditEntry[] }>('GET', `/audit?${qs(p)}`).then((r) => r.entries),
 }

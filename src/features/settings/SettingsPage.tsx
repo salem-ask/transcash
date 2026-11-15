@@ -7,6 +7,8 @@ import { todayIn } from '../../domain/fleet'
 import { can } from '../../domain/permissions'
 import type { RatesBundle, Settings } from '../../domain/types'
 import { formatDateTime, WEEKDAYS } from '../../lib/format'
+import { useSync } from '../../lib/useSync'
+import type { ResetScope } from '../../data/backend'
 
 const TIMEZONES = [
   { id: 'Africa/Kinshasa', label: 'Kinshasa (UTC+1)' },
@@ -25,6 +27,11 @@ export function SettingsPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [modeDraft, setModeDraft] = useState<'fixed' | 'free'>(bundle?.settings.paymentMode ?? 'fixed')
   const [modeFrom, setModeFrom] = useState(todayIn(bundle?.settings.timezone ?? 'Africa/Kinshasa'))
+  // Réinitialisation : étape 1 = choix, étape 2 = mot « supprimer »
+  const [resetStep, setResetStep] = useState<0 | 1 | 2>(0)
+  const [resetScope, setResetScope] = useState<ResetScope>('operations')
+  const [resetWord, setResetWord] = useState('')
+  const sync = useSync()
 
   useEffect(() => {
     backend.listRates().then(setRates, (e) => setMsg({ kind: 'error', text: e.message }))
@@ -285,6 +292,94 @@ export function SettingsPage() {
           </div>
         </div>
       </Card>
+      {can(role, 'data.reset') && (
+        <Card title="Réinitialisation">
+          {resetStep === 0 && (
+            <>
+              <p className="text-sm text-ink-soft">Efface les données pour repartir à zéro. Une sauvegarde complète est faite avant, sur cet appareil et sur le serveur.</p>
+              <Button variant="ghost" className="mt-3 w-full text-danger" disabled={busy !== null} onClick={() => { setResetStep(1); setMsg(null) }}>
+                Tout réinitialiser…
+              </Button>
+            </>
+          )}
+          {resetStep === 1 && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Étape 1 sur 2 : que faut-il effacer ?</p>
+              <div className="grid gap-2" role="radiogroup" aria-label="Que faut-il effacer">
+                {([
+                  ['operations', 'Les opérations seulement', 'Versements, dépenses, caisse, journées repos/panne, immobilisations, échéances et journal. Engins, chauffeurs, équipe et paramètres sont gardés.'],
+                  ['all', 'Tout', 'Les opérations, plus les engins, les chauffeurs et les comptes de l’équipe. Il reste l’entreprise, les paramètres et votre compte.'],
+                ] as const).map(([id, label, hint]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={resetScope === id}
+                    onClick={() => setResetScope(id)}
+                    className={`rounded-xl border-2 p-3 text-left ${resetScope === id ? 'border-danger bg-danger/10' : 'border-line'}`}
+                  >
+                    <span className="block font-semibold">{label}</span>
+                    <span className="text-xs text-ink-soft">{hint}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" className="flex-1" onClick={() => setResetStep(0)}>Retour</Button>
+                <Button variant="danger" className="flex-1" onClick={() => { setResetWord(''); setResetStep(2) }}>Continuer</Button>
+              </div>
+            </div>
+          )}
+          {resetStep === 2 && (
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void run('reset', async () => {
+                  await downloadBackup()
+                  await backend.resetData(resetScope, resetWord)
+                  setResetStep(0)
+                  setResetWord('')
+                  window.scrollTo(0, 0)
+                }, `Données réinitialisées (${resetScope === 'all' ? 'tout' : 'opérations'}). Une sauvegarde a été téléchargée sur cet appareil et une copie est gardée sur le serveur.`)
+              }}
+            >
+              <p className="text-sm font-medium">Étape 2 sur 2 : confirmation</p>
+              <Alert>
+                {resetScope === 'all'
+                  ? 'Tout va être effacé : opérations, engins, chauffeurs et comptes de l’équipe.'
+                  : 'Toutes les opérations vont être effacées : versements, dépenses, caisse, journées, immobilisations, échéances et journal.'}
+                {' '}Cette action ne peut pas être annulée depuis l'application.
+              </Alert>
+              {(sync.pending.length > 0 || !sync.online) && (
+                <Alert kind="info">
+                  {!sync.online ? 'Pas de connexion : la réinitialisation demande le réseau.' : `${sync.pending.length} opération(s) attendent d'être envoyées : patientez avant de réinitialiser.`}
+                </Alert>
+              )}
+              <Field
+                label="Pour confirmer, tapez le mot « supprimer »"
+                value={resetWord}
+                onChange={(e) => setResetWord(e.target.value)}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+              />
+              <div className="flex gap-2">
+                <Button type="button" variant="secondary" className="flex-1" disabled={busy !== null} onClick={() => setResetStep(0)}>Annuler</Button>
+                <Button
+                  type="submit"
+                  variant="danger"
+                  className="flex-1"
+                  busy={busy === 'reset'}
+                  disabled={busy !== null || resetWord.trim().toLowerCase() !== 'supprimer' || sync.pending.length > 0 || !sync.online}
+                >
+                  Effacer
+                </Button>
+              </div>
+            </form>
+          )}
+        </Card>
+      )}
     </div>
   )
 }

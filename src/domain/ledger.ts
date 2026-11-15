@@ -263,3 +263,20 @@ export const DAY_KIND_LABEL: Record<DayKind, string> = {
 
 /** Clé d'une journée d'un engin : « engin|AAAA-MM-JJ ». */
 export const dayKey = (d: { vehicleId: string; date: string }) => `${d.vehicleId}|${d.date}`
+
+/**
+ * Journées telles qu'elles seraient sans un versement donné (correction d'un versement) :
+ * ses montants sont retirés du « payé », les journées redeviennent dues.
+ */
+export function withoutAllocations<T extends LedgerDay>(days: T[], allocations: { vehicleId: string; date: string; amount: number }[]): T[] {
+  const back = new Map<string, number>()
+  for (const a of allocations) back.set(dayKey(a), (back.get(dayKey(a)) ?? 0) + a.amount)
+  return days.map((d) => {
+    const n = back.get(dayKey(d))
+    if (!n) return d
+    const paid = Math.max(d.paid - n, 0)
+    const remaining = Math.max(d.expected - paid, 0)
+    const state: PayState = d.expected === 0 ? (paid > 0 ? 'paid' : 'none') : remaining === 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid'
+    return { ...d, paid, remaining, state }
+  })
+}

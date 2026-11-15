@@ -313,6 +313,11 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
       à partir d'une date choisie ; aucune dette, le montant journalier de l'engin devient un objectif indicatif ;
       saisie simplifiée (journée + montant), plusieurs versements par jour ; dettes antérieures conservées ;
       le chauffeur ne voit que ses versements (pas l'objectif)
+- [x] **Correction d'un versement** (2026-11-15) : bouton « Corriger » sur le reçu → saisie pré-remplie ; l'ancien est annulé
+      (« Corrigé : remplacé par le reçu N° … »), le nouveau a son propre reçu ; une seule opération, idempotente, tracée au journal
+- [x] **Réinitialisation** (2026-11-15, super admin, Paramètres) : « opérations seulement » ou « tout » (engins, chauffeurs,
+      comptes sauf le sien) ; 2 étapes + mot « supprimer » ; sauvegarde téléchargée + copie serveur (`transcash-backups/`
+      à côté de la configuration, hors du dossier public) avant l'effacement ; impossible hors connexion
 
 ### Questions ouvertes
 - Alertes d'échéance : affichées dans l'application uniquement (notifications téléphone : à décider).
@@ -391,6 +396,8 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-15 | **Mode « montant libre »** optionnel, désactivé par défaut, activable par l'admin | Demande du propriétaire (certaines compagnies) |
 | 2026-11-15 | Mode libre : **jour sans versement = aucune dette** (1a) ; réglage **pour toute l'entreprise** (2a) ; **chauffeur voit seulement ses versements** (3a) | Choix du propriétaire |
 | 2026-11-15 | Changement de mode **à partir d'une date** (historique `payment_modes`) | Les dettes déjà dues ne disparaissent pas ; on peut revenir au montant fixe |
+| 2026-11-15 | **Corriger un versement = annuler + remplacer** (nouveau reçu), pas de modification sur place | Choix du propriétaire ; le reçu déjà envoyé au chauffeur reste vrai |
+| 2026-11-15 | **Bouton « Tout réinitialiser »** : choix opérations / tout, confirmation par le mot « supprimer », sauvegarde automatique | Choix du propriétaire ; seule exception à « aucune suppression physique » |
 
 ---
 
