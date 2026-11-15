@@ -483,6 +483,8 @@ check('montant libre : une seule journée par versement', $s === 422, $r);
 [$s, $r] = call('boss', 'GET', '/dashboard');
 $line = current(array_filter($r['lines'], fn($l) => $l['vehicleId'] === $bus));
 check('tableau de bord : jour libre, objectif affiché, pas de manque', $line['free'] === true && $line['remaining'] === 0 && $line['amount'] === 50000, $line);
+$busExpected = $line['currency'] === $r['currency'] ? 50000 : null;
+check('l\'objectif n\'est pas compté dans l\'attendu du jour', $r['today']['debt'] >= 0 && !in_array($bus, array_column(array_filter($r['lines'], fn($l) => $l['status'] === 'due' && !$l['free']), 'vehicleId'), true), $r['today']);
 [$s, $r] = call('boss', 'PUT', '/settings', ['paymentMode' => 'fixed', 'paymentModeFrom' => $day(1)]);
 check('retour au montant fixe programmé pour demain', $s === 200 && $r['settings']['paymentMode'] === 'free' && $r['settings']['nextPaymentMode']['mode'] === 'fixed', $r['settings']);
 

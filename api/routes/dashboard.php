@@ -99,8 +99,8 @@ function dashboard_get(): array
     // « amount » vaut le montant habituel même les jours non dus : on ne compte que les jours dus
     $expectedToday = 0;
     foreach ($lines as $l) {
-        if ($l['status'] !== 'due') {
-            continue;
+        if ($l['status'] !== 'due' || $l['free']) {
+            continue; // mode libre : l'objectif n'est pas un montant attendu
         }
         $v = convert_amount($l['amount'], $l['currency'], $base, $rate);
         if ($v === null) {
