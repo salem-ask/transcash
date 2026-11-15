@@ -16,7 +16,7 @@ export interface ReportData {
   vehicles: { id: string; name: string; type: VehicleType; plate: string | null; status: string }[]
   drivers: { id: string; name: string; phone: string }[]
   /** Journées passées de la période, par engin */
-  days: { vehicleId: string; date: string; driverId: string | null; kind: DayKind; expected: number; paid: number; currency: Currency }[]
+  days: { vehicleId: string; date: string; driverId: string | null; kind: DayKind; expected: number; paid: number; currency: Currency; free?: boolean; objective?: number }[]
   payments: { id: string; receiptNo: number; date: string; driverId: string; vehicleId: string | null; kind: PaymentKind; method: PaymentMethod; amount: number; currency: Currency; rate: number | null; reference: string | null }[]
   expenses: { id: string; date: string; vehicleId: string | null; driverId: string | null; category: ExpenseCategory; amount: number; currency: Currency; rate: number | null; paidBy: 'cash' | 'driver'; note: string | null; supplier: string | null }[]
 }

@@ -35,6 +35,12 @@ export interface Settings {
   timezone: string
   /** 0 = dimanche … 6 = samedi */
   restWeekdays: number[]
+  /** Mode de versement en vigueur aujourd'hui (« fixed » par défaut) */
+  paymentMode?: 'fixed' | 'free'
+  /** Date d'effet du mode en vigueur (null = depuis toujours) */
+  paymentModeFrom?: string | null
+  /** Changement déjà programmé pour une date future */
+  nextPaymentMode?: { mode: 'fixed' | 'free'; from: string } | null
 }
 
 /** Taux : nombre de CDF pour 1 USD. */
@@ -73,6 +79,8 @@ export interface DashboardLine {
   remaining: number
   state: 'paid' | 'partial' | 'unpaid' | 'none'
   currency: Currency
+  /** Mode libre ce jour-là : `amount` est un objectif indicatif, rien n'est dû */
+  free?: boolean
 }
 
 export interface Debtor {
@@ -169,6 +177,8 @@ export interface VehicleDay {
   paid: number
   remaining: number
   state: PayState
+  free?: boolean
+  objective?: number
   mark: { kind: DayMarkKind; amount: number | null; currency: Currency | null; reason: string | null } | null
 }
 

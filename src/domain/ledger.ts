@@ -34,7 +34,24 @@ export interface LedgerDay {
   state: PayState
   /** Montant du jour modifié à titre exceptionnel */
   override: boolean
+  /** Mode « montant libre » ce jour-là : rien n'est dû, `objective` est indicatif */
+  free: boolean
+  /** Montant habituel (objectif indicatif en mode libre) */
+  objective: number
   reason: string | null
+}
+
+/** Changement du mode de versement de l'entreprise, à partir d'une date. */
+export interface PaymentModeChange {
+  mode: 'fixed' | 'free'
+  effectiveFrom: string
+}
+
+/** Mode de versement en vigueur à une date (« fixed » si aucun changement). */
+export function paymentModeOn(changes: PaymentModeChange[], date: string): 'fixed' | 'free' {
+  let mode: 'fixed' | 'free' = 'fixed'
+  for (const c of [...changes].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))) if (c.effectiveFrom <= date) mode = c.mode
+  return mode
 }
 
 export interface LedgerVehicle {
@@ -79,7 +96,23 @@ export function withBreakdowns(marks: DayMark[], breakdowns: Breakdown[], from: 
 }
 
 /** Situation d'un jour donné pour un engin, avant paiement. */
+/**
+ * Ce qui est attendu un jour donné. En mode libre (`free`), rien n'est dû : `expected` = 0 et
+ * `objective` garde le montant habituel, à titre indicatif. Même règle que expected_for() en PHP.
+ */
 export function expectedFor(
+  v: LedgerVehicle,
+  date: string,
+  defaultRest: number[],
+  mark: DayMark | undefined,
+  free = false,
+): { kind: DayKind; expected: number; currency: Currency; override: boolean; free: boolean; objective: number } {
+  const e = expectedFixed(v, date, defaultRest, mark)
+  const isFree = free && e.kind === 'due'
+  return { ...e, objective: e.expected, expected: isFree ? 0 : e.expected, free: isFree }
+}
+
+function expectedFixed(
   v: LedgerVehicle,
   date: string,
   defaultRest: number[],
@@ -108,6 +141,8 @@ export function driverLedger(opts: {
   allocations: Allocation[]
   from: string
   to: string
+  /** Historique du mode de versement (absent = toujours « montant fixe ») */
+  paymentModes?: PaymentModeChange[]
 }): LedgerDay[] {
   const markKey = (vid: string, d: string) => `${vid}|${d}`
   const marks = new Map(opts.marks.map((m) => [markKey(m.vehicleId, m.date), m]))
@@ -122,7 +157,7 @@ export function driverLedger(opts: {
     const end = a.endDate && a.endDate < opts.to ? a.endDate : opts.to
     for (; d <= end; d = addDays(d, 1)) {
       const mark = marks.get(markKey(v.id, d))
-      const e = expectedFor(v, d, opts.defaultRest, mark)
+      const e = expectedFor(v, d, opts.defaultRest, mark, paymentModeOn(opts.paymentModes ?? [], d) === 'free')
       const p = paid.get(markKey(v.id, d)) ?? 0
       const remaining = Math.max(e.expected - p, 0)
       days.push({
@@ -136,6 +171,8 @@ export function driverLedger(opts: {
         remaining,
         state: e.expected === 0 ? (p > 0 ? 'paid' : 'none') : remaining === 0 ? 'paid' : p > 0 ? 'partial' : 'unpaid',
         override: e.override,
+        free: e.free,
+        objective: e.objective,
         reason: mark?.reason ?? null,
       })
     }
