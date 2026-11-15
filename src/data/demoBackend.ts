@@ -5,7 +5,7 @@ import { BackendError } from './backend'
 import { can, type Permission } from '../domain/permissions'
 import { convert } from '../domain/money'
 import { addDays, isValidDate, todayIn } from '../domain/fleet'
-import { allocate, driverLedger, expectedFor, summarize, totalIn, withBreakdowns, type Allocation, type Breakdown, type DayMark, type LedgerVehicle, type Totals } from '../domain/ledger'
+import { allocate, driverLedger, expectedFor, summarize, totalIn, withBreakdowns, type Allocation, type Breakdown, type DayMark, type LedgerVehicle, type Totals, paymentModeOn, type PaymentModeChange } from '../domain/ledger'
 import { cashBalance, reminderState, type CashEntry } from '../domain/finance'
 import type { ReportData } from '../domain/report'
 import type {
@@ -73,6 +73,8 @@ interface DemoReminder extends Omit<Reminder, 'vehicleName' | 'state'> {
 }
 interface DemoState {
   ownerName: string
+  /** Historique du mode de versement (absent dans les anciennes démos = montant fixe) */
+  paymentModes?: PaymentModeChange[]
   marks: DayMark[]
   payments: DemoPayment[]
   breakdowns: DemoBreakdown[]
@@ -306,6 +308,19 @@ const livePayments = (s: DemoState) => s.payments.filter((p) => !p.cancelled)
 function marksOf(s: DemoState, from: string, to: string): DayMark[] {
   return withBreakdowns(s.marks, s.breakdowns.filter((b) => !b.cancelled), from, to)
 }
+function settingsWithMode(s: DemoState): Settings {
+  const date = today(s)
+  const sorted = [...(s.paymentModes ?? [])].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))
+  const current = [...sorted].reverse().find((m) => m.effectiveFrom <= date)
+  const next = sorted.find((m) => m.effectiveFrom > date)
+  return {
+    ...s.settings,
+    paymentMode: current?.mode ?? 'fixed',
+    paymentModeFrom: current?.effectiveFrom ?? null,
+    nextPaymentMode: next ? { mode: next.mode, from: next.effectiveFrom } : null,
+  }
+}
+const isFree = (s: DemoState, date: string) => paymentModeOn(s.paymentModes ?? [], date) === 'free'
 function markAt(s: DemoState, vehicleId: string, date: string): DayMark | undefined {
   return marksOf(s, date, date).find((m) => m.vehicleId === vehicleId && m.date === date)
 }
@@ -323,6 +338,7 @@ function ledgerOf(s: DemoState, driverId: string, from: string, to: string) {
     vehicles: new Map(s.vehicles.map((v) => [v.id, ledgerVehicle(v)])),
     defaultRest: s.settings.restWeekdays,
     marks: marksOf(s, from, to),
+    paymentModes: s.paymentModes ?? [],
     allocations: livePayments(s).filter((p) => p.driverId === driverId).flatMap((p) => p.allocations),
     from,
     to,
@@ -492,17 +508,23 @@ export const demoBackend: Backend = {
     await pause()
     const s = load()
     me(s)
-    return { settings: s.settings, rate: await effectiveRate(s) }
+    return { settings: settingsWithMode(s), rate: await effectiveRate(s) }
   },
   async updateSettings(patch) {
     const s = load()
     need(s, 'settings.edit')
-    const next = { ...s.settings, ...patch }
+    const { paymentMode, paymentModeFrom, nextPaymentMode: _n, ...rest } = patch
+    const next = { ...s.settings, ...rest }
     next.secondaryCurrency = next.baseCurrency === 'CDF' ? 'USD' : 'CDF'
     next.restWeekdays = [...new Set(next.restWeekdays)].filter((d) => d >= 0 && d <= 6).sort()
     s.settings = next
+    if (paymentMode) {
+      const from = checkDate(paymentModeFrom ?? today(s), "Date d'effet")
+      s.paymentModes = [...(s.paymentModes ?? []).filter((m) => m.effectiveFrom < from), { mode: paymentMode, effectiveFrom: from }]
+      audit(s, 'payment_mode', 'owner', 'update', null, { mode: paymentMode, from })
+    }
     save(s)
-    return { settings: s.settings, rate: await effectiveRate(s) }
+    return { settings: settingsWithMode(s), rate: await effectiveRate(s) }
   },
   async listRates() {
     const s = load()
@@ -596,16 +618,17 @@ export const demoBackend: Backend = {
       .map((v) => ({ v, a: s.assignments.find((x) => x.vehicleId === v.id && x.startDate <= date && (x.endDate === null || x.endDate >= date)) }))
       .filter(({ a }) => u.role !== 'driver' || (a && myDriver && a.driverId === myDriver.id))
       .map(({ v, a }) => {
-        const e = expectedFor(ledgerVehicle(v), date, s.settings.restWeekdays, markAt(s, v.id, date))
+        const e = expectedFor(ledgerVehicle(v), date, s.settings.restWeekdays, markAt(s, v.id, date), isFree(s, date))
         const status = e.kind === 'due' && !a ? 'no_driver' : e.kind
         const expected = status === 'due' ? e.expected : 0
         const paid = paidOnVehicleDay(s, v.id, date)
         const remaining = Math.max(expected - paid, 0)
         return {
           vehicleId: v.id, vehicleName: v.name, type: v.type, driverId: a?.driverId ?? null, driverName: a?.driverName ?? null,
-          status, amount: expected || (e.kind === 'due' ? e.expected : v.dailyAmount), paid, remaining,
+          status, amount: expected || (e.kind === 'due' ? e.objective : v.dailyAmount), paid, remaining,
           state: expected === 0 ? (paid > 0 ? 'paid' : 'none') : remaining === 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid',
           currency: e.currency,
+          free: e.free,
         } satisfies DashboardLine
       })
       .sort((x, y) => x.vehicleName.localeCompare(y.vehicleName))
@@ -640,7 +663,7 @@ export const demoBackend: Backend = {
       date,
       rate: rateRow,
       today: {
-        expected: sum((l) => l.amount, (l) => l.status === 'due'),
+        expected: sum((l) => l.amount, (l) => l.status === 'due' && !l.free),
         paid: sum((l) => l.paid),
         debt: sum((l) => l.remaining),
         received: received(date),
@@ -1153,10 +1176,10 @@ export const demoBackend: Backend = {
     for (const v of s.vehicles) {
       for (let d = from > v.serviceDate ? from : v.serviceDate; d <= last; d = addDays(d, 1)) {
         const a = s.assignments.find((x) => x.vehicleId === v.id && x.startDate <= d && (x.endDate === null || x.endDate >= d))
-        const e = expectedFor(ledgerVehicle(v), d, s.settings.restWeekdays, markAt(s, v.id, d))
+        const e = expectedFor(ledgerVehicle(v), d, s.settings.restWeekdays, markAt(s, v.id, d), isFree(s, d))
         const paid = paidOnVehicleDay(s, v.id, d)
         if (!a && paid === 0 && e.kind !== 'breakdown') continue
-        days.push({ vehicleId: v.id, date: d, driverId: a?.driverId ?? null, kind: e.kind, expected: a ? e.expected : 0, paid, currency: e.currency })
+        days.push({ vehicleId: v.id, date: d, driverId: a?.driverId ?? null, kind: e.kind, expected: a ? e.expected : 0, paid, currency: e.currency, free: e.free, objective: a ? e.objective : 0 })
       }
     }
     return {
@@ -1304,14 +1327,19 @@ function recordPayment(s: DemoState, u: DemoUser, input: NewPaymentInput, method
       const dates = chosen.map((c) => checkDate(c.date, 'Journée'))
       if (dates.some((x) => x > addDays(date, 31))) fail(422, "On ne peut pas payer plus de 31 jours d'avance")
       const ledger = ledgerOf(s, d.id, [...dates].sort()[0], [...dates].sort().pop()!)
-      const selected = chosen.map((c) => {
-        const day = ledger.find((x) => x.date === c.date && x.vehicleId === c.vehicleId) ?? fail(422, `Le ${c.date}, ce chauffeur ne conduisait pas cet engin`)
-        if (day.remaining <= 0) fail(422, `La journée du ${c.date} ne doit rien (déjà payée, repos ou panne)`)
+      const picked = chosen.map((c) => ledger.find((x) => x.date === c.date && x.vehicleId === c.vehicleId) ?? fail(422, `Le ${c.date}, ce chauffeur ne conduisait pas cet engin`))
+      const freeDay = picked.find((x) => x.free)
+      if (freeDay && picked.length !== 1) fail(422, 'Montant libre : un versement concerne une seule journée')
+      const selected = freeDay ? [] : picked.map((day) => {
+        if (day.remaining <= 0) fail(422, `La journée du ${day.date} ne doit rien (déjà payée, repos ou panne)`)
         return day
       })
       let r: ReturnType<typeof allocate>
       try {
-        r = allocate(input.amount, input.currency, rate, selected)
+        r = freeDay
+          ? { allocations: [{ date: freeDay.date, vehicleId: freeDay.vehicleId, amount: freeDay.currency === input.currency ? input.amount : convert(input.amount, input.currency, freeDay.currency, rate ?? NaN) }], leftover: 0 }
+          : allocate(input.amount, input.currency, rate, selected)
+        if (freeDay && !Number.isFinite(r.allocations[0].amount)) throw new Error('taux')
       } catch {
         return fail(422, 'Taux de change indisponible : saisissez un taux dans les paramètres')
       }
@@ -1344,7 +1372,7 @@ function vehicleDaysOf(s: DemoState, vid: string): VehicleDays {
     const a = s.assignments.find((x) => x.vehicleId === vid && x.startDate <= d && (x.endDate === null || x.endDate >= d))
     const explicit = s.marks.find((x) => x.vehicleId === vid && x.date === d)
     const m = explicit ?? markAt(s, vid, d)
-    const e = expectedFor(ledgerVehicle(v), d, s.settings.restWeekdays, m)
+    const e = expectedFor(ledgerVehicle(v), d, s.settings.restWeekdays, m, isFree(s, d))
     const expected = a ? e.expected : 0
     const paid = paidOnVehicleDay(s, vid, d)
     const remaining = Math.max(expected - paid, 0)
@@ -1354,6 +1382,8 @@ function vehicleDaysOf(s: DemoState, vid: string): VehicleDays {
       kind: a || e.kind !== 'due' ? e.kind : 'no_driver',
       expected, currency: e.currency, paid, remaining,
       state: expected === 0 ? (paid > 0 ? 'paid' : 'none') : remaining === 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid',
+      free: e.free,
+      objective: a ? e.objective : 0,
       mark: explicit ? { kind: explicit.kind, amount: explicit.amount, currency: explicit.currency, reason: explicit.reason } : null,
     })
   }
