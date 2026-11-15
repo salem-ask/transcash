@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useSession } from './session'
-import { can, type Permission } from '../domain/permissions'
+import { can, roleLabel, type Permission } from '../domain/permissions'
 import { backend } from '../data'
 import { SyncBanner } from '../features/sync/SyncBanner'
 
@@ -55,7 +55,10 @@ export function Layout() {
             <p className="text-lg font-bold leading-tight text-brand">TransCash</p>
             <p className="truncate text-xs text-ink-soft">{session?.ownerName}</p>
           </div>
-          <p className="truncate text-right text-sm text-ink-soft">{session?.user?.name}</p>
+          <div className="min-w-0 text-right">
+            <p className="truncate text-sm text-ink-soft">{session?.user?.name}</p>
+            {session?.user?.role && <p className="truncate text-xs font-medium text-brand">{roleLabel(session.user.role)}</p>}
+          </div>
         </div>
       </header>
 
