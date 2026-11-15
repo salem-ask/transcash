@@ -1198,6 +1198,12 @@ export const demoBackend: Backend = {
       breakdowns: s.breakdowns.length, day_marks: s.marks.length, reminders: s.reminders.length, audit_log: s.audit.length,
     }
     Object.assign(s, { payments: [], expenses: [], movements: [], breakdowns: [], marks: [], reminders: [], audit: [] })
+    if (scope === 'operations') {
+      // Repartir à zéro : affectations terminées effacées, celles en cours recommencent aujourd'hui
+      const date = today(s)
+      deleted.assignments_ended = s.assignments.filter((x) => x.endDate !== null).length
+      s.assignments = s.assignments.filter((x) => x.endDate === null).map((x) => (x.startDate < date ? { ...x, startDate: date } : x))
+    }
     if (scope === 'all') {
       Object.assign(deleted, { vehicles: s.vehicles.length, drivers: s.drivers.length, assignments: s.assignments.length, users: s.users.length - 1 })
       Object.assign(s, { vehicles: [], drivers: [], assignments: [], users: s.users.filter((x) => x.id === u.id) })

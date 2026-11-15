@@ -307,7 +307,7 @@ export function SettingsPage() {
               <p className="text-sm font-medium">Étape 1 sur 2 : que faut-il effacer ?</p>
               <div className="grid gap-2" role="radiogroup" aria-label="Que faut-il effacer">
                 {([
-                  ['operations', 'Les opérations seulement', 'Versements, dépenses, caisse, journées repos/panne, immobilisations, échéances et journal. Engins, chauffeurs, équipe et paramètres sont gardés.'],
+                  ['operations', 'Les opérations seulement', 'Versements, dépenses, caisse, journées repos/panne, immobilisations, échéances et journal. Engins, chauffeurs, équipe et paramètres sont gardés ; les chauffeurs en place repartent d’aujourd’hui, sans dette.'],
                   ['all', 'Tout', 'Les opérations, plus les engins, les chauffeurs et les comptes de l’équipe. Il reste l’entreprise, les paramètres et votre compte.'],
                 ] as const).map(([id, label, hint]) => (
                   <button
@@ -347,7 +347,7 @@ export function SettingsPage() {
               <Alert>
                 {resetScope === 'all'
                   ? 'Tout va être effacé : opérations, engins, chauffeurs et comptes de l’équipe.'
-                  : 'Toutes les opérations vont être effacées : versements, dépenses, caisse, journées, immobilisations, échéances et journal.'}
+                  : 'Toutes les opérations vont être effacées : versements, dépenses, caisse, journées, immobilisations, échéances et journal. Les chauffeurs en place repartent d’aujourd’hui, sans dette.'}
                 {' '}Cette action ne peut pas être annulée depuis l'application.
               </Alert>
               {(sync.pending.length > 0 || !sync.online) && (

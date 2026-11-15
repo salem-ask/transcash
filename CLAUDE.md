@@ -317,7 +317,8 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
       (« Corrigé : remplacé par le reçu N° … »), le nouveau a son propre reçu ; une seule opération, idempotente, tracée au journal
 - [x] **Réinitialisation** (2026-11-15, super admin, Paramètres) : « opérations seulement » ou « tout » (engins, chauffeurs,
       comptes sauf le sien) ; 2 étapes + mot « supprimer » ; sauvegarde téléchargée + copie serveur (`transcash-backups/`
-      à côté de la configuration, hors du dossier public) avant l'effacement ; impossible hors connexion
+      à côté de la configuration, hors du dossier public) avant l'effacement ; impossible hors connexion ;
+      « opérations » : affectations terminées effacées, celles en cours repartent d'aujourd'hui (aucune dette fantôme)
 
 ### Questions ouvertes
 - Alertes d'échéance : affichées dans l'application uniquement (notifications téléphone : à décider).
@@ -398,6 +399,7 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-15 | Changement de mode **à partir d'une date** (historique `payment_modes`) | Les dettes déjà dues ne disparaissent pas ; on peut revenir au montant fixe |
 | 2026-11-15 | **Corriger un versement = annuler + remplacer** (nouveau reçu), pas de modification sur place | Choix du propriétaire ; le reçu déjà envoyé au chauffeur reste vrai |
 | 2026-11-15 | **Bouton « Tout réinitialiser »** : choix opérations / tout, confirmation par le mot « supprimer », sauvegarde automatique | Choix du propriétaire ; seule exception à « aucune suppression physique » |
+| 2026-11-15 | Réinitialisation « opérations » : affectations en cours repartent d'aujourd'hui, anciennes effacées | Accord du propriétaire ; sinon tous les jours passés redeviendraient des dettes |
 
 ---
 

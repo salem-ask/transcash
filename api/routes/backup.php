@@ -83,7 +83,7 @@ const RESET_ALL_EXTRA = ['assignments', 'vehicle_amounts', 'vehicles', 'drivers'
 
 /**
  * Réinitialisation (super administrateur) : « operations » efface versements, dépenses, caisse, journées,
- * immobilisations, échéances et journal ; « all » efface en plus engins, chauffeurs et comptes (sauf le sien).
+ * immobilisations, échéances et journal, et les affectations en cours repartent d'aujourd'hui ; « all » efface en plus engins, chauffeurs et comptes (sauf le sien).
  * Confirmation : le mot « supprimer » tapé à l'écran. Une sauvegarde complète est d'abord écrite sur le serveur.
  */
 function admin_reset(): array
@@ -106,6 +106,13 @@ function admin_reset(): array
         $tables = $scope === 'all' ? array_merge(RESET_OPERATIONS, RESET_ALL_EXTRA) : RESET_OPERATIONS;
         foreach ($tables as $t) {
             $counts[$t] = query("DELETE FROM $t WHERE owner_id = ?", [$owner])->rowCount();
+        }
+        if ($scope === 'operations') {
+            // Repartir à zéro : sans cela, tous les jours passés des affectations redeviendraient des dettes.
+            // Les anciennes affectations sont effacées, celles en cours recommencent aujourd'hui.
+            $today = today_for(load_settings($owner)['timezone']);
+            $counts['assignments_ended'] = query('DELETE FROM assignments WHERE owner_id = ? AND end_date IS NOT NULL', [$owner])->rowCount();
+            $counts['assignments_restarted'] = query('UPDATE assignments SET start_date = ? WHERE owner_id = ? AND end_date IS NULL AND start_date < ?', [$today, $owner, $today])->rowCount();
         }
         if ($scope === 'all') {
             $counts['users'] = query('DELETE FROM users WHERE owner_id = ? AND id <> ?', [$owner, $u['id']])->rowCount();
