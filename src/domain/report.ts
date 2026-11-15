@@ -33,6 +33,13 @@ export interface ReportLine {
   expected: number
   paid: number
   remaining: number
+  /**
+   * Objectif : attendu des jours à montant fixe + objectif indicatif des jours en montant libre.
+   * C'est la base du taux de recouvrement (sinon un mois en mode libre donnerait des taux absurdes).
+   */
+  target: number
+  /** Jours travaillés en mode « montant libre » */
+  freeDays: number
   /** Versements reçus sur la période (date de réception) */
   received: number
   expenses: number
@@ -61,7 +68,7 @@ export interface Report {
 }
 
 const emptyLine = (id: string, name: string): ReportLine => ({
-  id, name, expected: 0, paid: 0, remaining: 0, received: 0, expenses: 0, profit: 0,
+  id, name, expected: 0, paid: 0, remaining: 0, target: 0, freeDays: 0, received: 0, expenses: 0, profit: 0,
   dueDays: 0, unpaidDays: 0, breakdownDays: 0, restDays: 0, related: [],
 })
 
@@ -111,11 +118,15 @@ export function buildReport(data: ReportData, filter: ReportFilter = {}): Report
     const expected = conv(d.expected, d.currency)
     const paid = conv(d.paid, d.currency)
     const remaining = conv(Math.max(d.expected - d.paid, 0), d.currency)
+    const isFree = !!d.free && d.kind === 'due'
+    const target = isFree ? conv(d.objective ?? 0, d.currency) : expected
     const lines = [totals, vehicleLine(d.vehicleId), ...(d.driverId ? [driverLine(d.driverId)] : [])]
     for (const l of lines) {
       l.expected += expected
       l.paid += paid
       l.remaining += remaining
+      l.target += target
+      if (isFree) l.freeDays++
       if (d.kind === 'due' && d.expected > 0) l.dueDays++
       if (d.kind === 'due' && d.expected > d.paid) l.unpaidDays++
       if (d.kind === 'breakdown') l.breakdownDays++
@@ -154,7 +165,7 @@ export function buildReport(data: ReportData, filter: ReportFilter = {}): Report
   }
 
   for (const l of [totals, ...byVehicle.values(), ...byDriver.values()]) l.profit = l.received - l.expenses
-  totals.collectionRate = totals.expected > 0 ? totals.paid / totals.expected : null
+  totals.collectionRate = totals.target > 0 ? totals.paid / totals.target : null
 
   const title = filter.vehicleId
     ? `Rapport — ${vName.get(filter.vehicleId) ?? 'engin'}`

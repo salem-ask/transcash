@@ -9,7 +9,7 @@ import { DayStatePill, LedgerView } from '../payments/LedgerView'
 import { ReminderPill } from '../vehicles/VehicleOpsCards'
 import { reminderName } from '../../domain/finance'
 import { formatMoney } from '../../domain/money'
-import { formatRate } from '../../domain/money'
+import { convert, formatRate } from '../../domain/money'
 import { can } from '../../domain/permissions'
 import type { Dashboard } from '../../domain/types'
 import { formatDateTime, formatToday } from '../../lib/format'
@@ -26,7 +26,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 }
 
 
-/** Cette semaine (lundi → aujourd'hui) : attendu, payé, recouvrement. */
+/** Cette semaine (lundi → aujourd'hui) : attendu (ou objectif en montant libre), payé, recouvrement. */
 function WeekCard({ today }: { today: string }) {
   const week = periodPresets(today)[0]
   const { data } = useLoad(() => backend.reportData(week.from, week.to), [week.from])
@@ -35,9 +35,9 @@ function WeekCard({ today }: { today: string }) {
   return (
     <Card title="Cette semaine" action={<Link to="/rapports" className="text-sm font-medium text-brand">Rapports</Link>}>
       <div className="grid grid-cols-3 gap-2">
-        <Stat label="Attendu"><Money amount={t.expected} currency={data.currency} /></Stat>
-        <Stat label="Payé"><Money amount={t.paid} currency={data.currency} /></Stat>
-        <Stat label="Recouvrement">
+        <Stat label={t.freeDays > 0 ? 'Objectif' : 'Attendu'}><Money amount={t.target} currency={data.currency} /></Stat>
+        <Stat label={t.freeDays > 0 ? 'Versé' : 'Payé'}><Money amount={t.paid} currency={data.currency} /></Stat>
+        <Stat label={t.freeDays > 0 ? 'Atteint' : 'Recouvrement'}>
           <span className="text-xl font-bold">{t.collectionRate === null ? '—' : `${Math.round(t.collectionRate * 100)} %`}</span>
         </Stat>
       </div>
@@ -64,6 +64,14 @@ export function DashboardPage() {
   const canOpen = can(session?.user?.role, 'vehicles.view')
   const c = data.currency
   const order = { due: 0, no_driver: 1, breakdown: 2, rest: 3, not_started: 4 }
+  // Mode montant libre aujourd'hui : objectif du jour = somme des montants habituels des engins qui travaillent
+  const freeLines = data.lines.filter((l) => l.status === 'due' && l.free)
+  const freeMode = bundle?.settings.paymentMode === 'free' || freeLines.length > 0
+  let todayObjective = 0
+  for (const l of freeLines) {
+    if (l.currency === c) todayObjective += l.amount
+    else if (data.rate) todayObjective += convert(l.amount, l.currency, c, data.rate.rate)
+  }
   const lines = [...data.lines].sort((a, b) => order[a.status] - order[b.status] || a.vehicleName.localeCompare(b.vehicleName))
 
   return (
@@ -73,14 +81,33 @@ export function DashboardPage() {
         <p className="text-sm text-ink-soft">{isDriver ? 'Votre situation' : 'Vue globale de tous vos engins'}</p>
       </div>
 
+      {freeMode && !isDriver && (
+        <Alert kind="info">
+          <strong>Mode montant libre activé</strong>
+          {bundle?.settings.paymentModeFrom ? ` depuis le ${bundle.settings.paymentModeFrom.split('-').reverse().join('/')}` : ''} : aucune dette, le montant
+          journalier des engins sert d'objectif.{' '}
+          {can(session?.user?.role, 'settings.edit') && <Link to="/parametres" className="font-semibold underline">Changer</Link>}
+        </Alert>
+      )}
+
       <Card title="Aujourd'hui">
-        <div className="grid grid-cols-3 gap-2">
-          <Stat label="Attendu"><Money amount={data.today.expected} currency={c} /></Stat>
-          <Stat label="Versé"><Money amount={data.today.paid} currency={c} /></Stat>
-          <Stat label="Manque">
-            <Money amount={data.today.debt} currency={c} className={data.today.debt ? 'text-danger' : ''} />
-          </Stat>
-        </div>
+        {freeMode && !isDriver ? (
+          <div className="grid grid-cols-3 gap-2">
+            <Stat label="Objectif"><Money amount={todayObjective} currency={c} /></Stat>
+            <Stat label="Versé"><Money amount={data.today.paid} currency={c} /></Stat>
+            <Stat label="Atteint">
+              <span className="text-xl font-bold">{todayObjective > 0 ? `${Math.round((data.today.paid / todayObjective) * 100)} %` : '—'}</span>
+            </Stat>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            <Stat label="Attendu"><Money amount={data.today.expected} currency={c} /></Stat>
+            <Stat label="Versé"><Money amount={data.today.paid} currency={c} /></Stat>
+            <Stat label="Manque">
+              <Money amount={data.today.debt} currency={c} className={data.today.debt ? 'text-danger' : ''} />
+            </Stat>
+          </div>
+        )}
         {!isDriver && (
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Stat label="Encaissé aujourd'hui"><Money amount={data.today.received} currency={c} /></Stat>
@@ -151,7 +178,7 @@ export function DashboardPage() {
           <>
             {!isDriver && (
               <div className="mb-3 grid grid-cols-3 gap-2 text-center">
-                <Stat label="Doivent verser"><span className="text-xl font-bold">{data.vehicles.working}</span></Stat>
+                <Stat label={freeMode ? 'Au travail' : 'Doivent verser'}><span className="text-xl font-bold">{data.vehicles.working}</span></Stat>
                 <Stat label="Repos"><span className="text-xl font-bold">{data.vehicles.resting}</span></Stat>
                 <Stat label="Sans chauffeur">
                   <span className={`text-xl font-bold ${data.vehicles.noDriver ? 'text-danger' : ''}`}>{data.vehicles.noDriver}</span>
@@ -169,7 +196,12 @@ export function DashboardPage() {
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1 text-sm">
                       {l.status === 'due' && !l.free ? <Money amount={l.amount} currency={l.currency} className="items-end" /> : null}
-                      {l.status === 'due' && l.free && l.paid > 0 ? <Money amount={l.paid} currency={l.currency} className="items-end" /> : null}
+                      {l.status === 'due' && l.free ? (
+                        <span className="text-right">
+                          <Money amount={l.paid} currency={l.currency} className="items-end" />
+                          {!isDriver && l.amount > 0 && <span className="block text-xs text-ink-soft">objectif {formatMoney(l.amount, l.currency)}</span>}
+                        </span>
+                      ) : null}
                       {l.status === 'due' ? <DayStatePill day={{ kind: 'due', state: l.state, free: l.free }} /> : <Pill kind={l.status} />}
                     </div>
                   </>

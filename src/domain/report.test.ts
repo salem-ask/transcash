@@ -62,6 +62,33 @@ describe('rapport', () => {
   })
 })
 
+describe('rapport en mode montant libre', () => {
+  // Cas réel : 50 000 FC/jour ; lundi à montant fixe, puis mode libre ; 270 000 FC versés sur la semaine
+  const week: ReportData = {
+    ...data, from: '2026-11-09', to: '2026-11-15', payments: [], expenses: [],
+    days: [
+      { vehicleId: 'taxi', date: '2026-11-09', driverId: 'jean', kind: 'due', expected: 50000, paid: 50000, currency: 'CDF' },
+      ...['10', '11', '12', '13', '14', '15'].map((d, i) => ({
+        vehicleId: 'taxi', date: `2026-11-${d}`, driverId: 'jean', kind: 'due' as const, expected: 0, paid: i < 4 ? 55000 : 0,
+        currency: 'CDF' as const, free: true, objective: 50000,
+      })),
+    ],
+  }
+  const t = buildReport(week).totals
+  it('objectif = attendu des jours fixes + objectif des jours libres', () => {
+    expect(t.expected).toBe(50000)
+    expect(t.target).toBe(350000)
+    expect(t.freeDays).toBe(6)
+    expect(t.paid).toBe(270000)
+  })
+  it('le taux se calcule sur l\'objectif (77 %, pas 540 %)', () => {
+    expect(t.collectionRate).toBeCloseTo(270000 / 350000)
+  })
+  it('sans mode libre : objectif = attendu', () => {
+    expect(buildReport(data).totals.target).toBe(buildReport(data).totals.expected)
+  })
+})
+
 describe('périodes', () => {
   it('semaine du lundi, mois, mois dernier', () => {
     const p = Object.fromEntries(periodPresets('2026-11-11').map((x) => [x.id, [x.from, x.to]]))

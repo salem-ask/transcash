@@ -57,7 +57,7 @@ function Lines({ items, currency, relatedLabel }: { items: ReportLine[]; currenc
           </div>
           {l.related.length > 0 && <p className="truncate text-xs text-ink-soft">{relatedLabel} : {l.related.join(', ')}</p>}
           <dl className="mt-1 grid grid-cols-3 gap-x-2 text-xs tabular-nums">
-            <div><dt className="text-ink-soft">Attendu</dt><dd><Money amount={l.expected} currency={currency} /></dd></div>
+            <div><dt className="text-ink-soft">{l.freeDays > 0 ? 'Objectif' : 'Attendu'}</dt><dd><Money amount={l.freeDays > 0 ? l.target : l.expected} currency={currency} /></dd></div>
             <div><dt className="text-ink-soft">Payé</dt><dd><Money amount={l.paid} currency={currency} /></dd></div>
             <div><dt className="text-ink-soft">Reste dû</dt><dd className={l.remaining ? 'text-danger' : ''}><Money amount={l.remaining} currency={currency} /></dd></div>
             <div><dt className="text-ink-soft">Reçu</dt><dd><Money amount={l.received} currency={currency} /></dd></div>
@@ -159,10 +159,14 @@ export function ReportsPage() {
 
           <Card title="Résumé">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <Stat label="Attendu"><Money amount={t.expected} currency={c} /></Stat>
-              <Stat label="Payé pour ces jours"><Money amount={t.paid} currency={c} /></Stat>
-              <Stat label="Reste dû" tone={t.remaining ? 'bad' : undefined}><Money amount={t.remaining} currency={c} className={t.remaining ? 'text-danger' : ''} /></Stat>
-              <Stat label="Recouvrement">
+              {t.freeDays > 0 ? (
+                <Stat label="Objectif"><Money amount={t.target} currency={c} /></Stat>
+              ) : (
+                <Stat label="Attendu"><Money amount={t.expected} currency={c} /></Stat>
+              )}
+              <Stat label={t.freeDays > 0 ? 'Versé pour ces jours' : 'Payé pour ces jours'}><Money amount={t.paid} currency={c} /></Stat>
+              <Stat label={t.freeDays > 0 ? 'Dettes (montant fixe)' : 'Reste dû'} tone={t.remaining ? 'bad' : undefined}><Money amount={t.remaining} currency={c} className={t.remaining ? 'text-danger' : ''} /></Stat>
+              <Stat label={t.freeDays > 0 ? 'Objectif atteint' : 'Recouvrement'}>
                 <span className="text-xl font-bold">{t.collectionRate === null ? '—' : `${Math.round(t.collectionRate * 100)} %`}</span>
               </Stat>
               <Stat label="Versements reçus"><Money amount={t.received} currency={c} /></Stat>
