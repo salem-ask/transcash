@@ -73,7 +73,8 @@ export function VehicleFormPage() {
       const input = {
         type: form.type, name: form.name, plate: form.plate, model: form.model, dailyAmount: parsed,
         currency: form.currency, restWeekdays: form.ownRestDays ? form.restWeekdays : null, notes: form.notes,
-        ...(original ? { amountFrom: amountChanged ? form.amountFrom : undefined } : { serviceDate: form.serviceDate }),
+        serviceDate: form.serviceDate,
+        ...(original ? { amountFrom: amountChanged ? form.amountFrom : undefined } : {}),
       }
       const saved = original ? await backend.updateVehicle(original.vehicle.id, input) : await backend.createVehicle(input)
       navigate(`/engins/${saved.vehicle.id}`, { replace: true })
@@ -148,9 +149,19 @@ export function VehicleFormPage() {
               <p className="mt-1 text-xs text-ink-soft">Les jours précédents gardent l'ancien montant : l'historique ne change pas.</p>
             </div>
           )}
-          {!original && (
-            <Field label="Mise en service" hint="Premier jour où un versement est attendu" type="date" value={form.serviceDate} onChange={(e) => set('serviceDate', e.target.value)} required />
-          )}
+          <Field
+            label="Mise en service"
+            hint={
+              original
+                ? "Premier jour où un versement est attendu. Vous pouvez la reculer (engin déjà en route avant son enregistrement) ; l'avancer n'est possible qu'avant tout chauffeur ou versement."
+                : 'Premier jour où un versement est attendu (peut être dans le passé)'
+            }
+            type="date"
+            max={today}
+            value={form.serviceDate}
+            onChange={(e) => set('serviceDate', e.target.value)}
+            required
+          />
         </div>
       </Card>
 

@@ -495,6 +495,28 @@ check('l\'objectif n\'est pas compté dans l\'attendu du jour', $r['today']['deb
 check('retour au montant fixe programmé pour demain', $s === 200 && $r['settings']['paymentMode'] === 'free' && $r['settings']['nextPaymentMode']['mode'] === 'fixed', $r['settings']);
 
 
+echo "Date de mise en service modifiable\n";
+$tdy = date('Y-m-d');
+[$s, $r] = call('boss', 'POST', '/vehicles', ['type' => 'tricycle', 'name' => 'Tricycle tardif', 'dailyAmount' => 8000, 'currency' => 'CDF']);
+$tri = $r['vehicle']['id'];
+$triBase = ['name' => 'Tricycle tardif', 'type' => 'tricycle', 'dailyAmount' => 8000, 'currency' => 'CDF'];
+[$s, $r] = call('boss', 'POST', "/vehicles/$tri/assign", ['driverId' => $paul, 'startDate' => '2026-05-10']);
+check('affectation avant la mise en service refusée', $s === 422, $r);
+[$s, $r] = call('boss', 'PUT', "/vehicles/$tri", $triBase + ['serviceDate' => '2026-05-10']);
+check('mise en service reculée, le montant s\'applique dès cette date', $s === 200 && $r['vehicle']['serviceDate'] === '2026-05-10'
+    && count($r['amounts']) === 1 && $r['amounts'][0]['effectiveFrom'] === '2026-05-10', $r);
+[$s, $r] = call('boss', 'PUT', "/vehicles/$tri", $triBase + ['serviceDate' => date('Y-m-d', strtotime('+3 days'))]);
+check('mise en service dans le futur refusée', $s === 422, $r);
+$drv = call('boss', 'POST', '/drivers', ['name' => 'Tri Chauffeur', 'phone' => '0813333333'])[1]['driver']['id'];
+[$s, $r] = call('boss', 'POST', "/vehicles/$tri/assign", ['driverId' => $drv, 'startDate' => '2026-05-12']);
+check('affectation à la date passée acceptée', $s === 200, $r);
+[$s, $r] = call('boss', 'PUT', "/vehicles/$tri", $triBase + ['serviceDate' => '2026-05-20']);
+check('avancer après une affectation : refusé', $s === 422, $r);
+[$s, $r] = call('boss', 'PUT', "/vehicles/$tri", $triBase + ['serviceDate' => '2026-05-12']);
+check('avancer jusqu\'au premier jour d\'activité : accepté', $s === 200 && $r['vehicle']['serviceDate'] === '2026-05-12' && $r['amounts'][0]['effectiveFrom'] === '2026-05-12', $r);
+[$s] = call('compta', 'PUT', "/vehicles/$tri", $triBase + ['serviceDate' => '2026-05-01']);
+check('le comptable ne modifie pas un engin', $s === 403);
+
 echo "Correction d'un versement\n";
 [$s, $orig] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 1000, 'currency' => 'CDF', 'method' => 'cash',
     'days' => [['date' => $day(0), 'vehicleId' => $bus]]]);

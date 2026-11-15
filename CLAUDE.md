@@ -319,6 +319,8 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
       comptes sauf le sien) ; 2 étapes + mot « supprimer » ; sauvegarde téléchargée + copie serveur (`transcash-backups/`
       à côté de la configuration, hors du dossier public) avant l'effacement ; impossible hors connexion ;
       « opérations » : affectations terminées effacées, celles en cours repartent d'aujourd'hui (aucune dette fantôme)
+- [x] **Date de mise en service modifiable** (2026-11-15) : reculer (engin en route avant son enregistrement) → le premier
+      montant s'applique dès cette date ; avancer refusé au-delà du premier jour d'activité (chauffeur, versement, journée, panne) ; jamais dans le futur
 
 ### Questions ouvertes
 - Alertes d'échéance : affichées dans l'application uniquement (notifications téléphone : à décider).
@@ -400,6 +402,7 @@ Légende : `[x]` fait · `[~]` en cours · `[ ]` à faire
 | 2026-11-15 | **Corriger un versement = annuler + remplacer** (nouveau reçu), pas de modification sur place | Choix du propriétaire ; le reçu déjà envoyé au chauffeur reste vrai |
 | 2026-11-15 | **Bouton « Tout réinitialiser »** : choix opérations / tout, confirmation par le mot « supprimer », sauvegarde automatique | Choix du propriétaire ; seule exception à « aucune suppression physique » |
 | 2026-11-15 | Réinitialisation « opérations » : affectations en cours repartent d'aujourd'hui, anciennes effacées | Accord du propriétaire ; sinon tous les jours passés redeviendraient des dettes |
+| 2026-11-15 | **Mise en service modifiable** après création ; on ne peut pas l'avancer après une activité déjà enregistrée | Demande du propriétaire : enregistrer après coup un engin déjà en route ; ne jamais perdre un versement |
 
 ---
 

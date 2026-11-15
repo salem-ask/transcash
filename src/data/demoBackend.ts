@@ -719,6 +719,26 @@ export const demoBackend: Backend = {
     checkAmount(input.dailyAmount)
     const plate = normalizePlate(input.plate)
     checkPlate(s, plate, vid)
+    if (input.serviceDate && input.serviceDate !== v.serviceDate) {
+      const service = checkDate(input.serviceDate, 'Date de mise en service')
+      if (service > today(s)) fail(422, 'La mise en service ne peut pas être dans le futur')
+      if (service > v.serviceDate) {
+        const dates = [
+          ...s.assignments.filter((x) => x.vehicleId === vid).map((x) => x.startDate),
+          ...s.payments.filter((p) => !p.cancelled).flatMap((p) => p.allocations).filter((x) => x.vehicleId === vid).map((x) => x.date),
+          ...s.marks.filter((x) => x.vehicleId === vid).map((x) => x.date),
+          ...s.breakdowns.filter((x) => !x.cancelled && x.vehicleId === vid).map((x) => x.startDate),
+        ].sort()
+        if (dates[0] && service > dates[0])
+          fail(422, `L'engin a déjà de l'activité le ${dates[0]} (chauffeur, versement ou journée) : la mise en service ne peut pas être après cette date`)
+        const kept = [...v.amounts].sort((x, y) => x.effectiveFrom.localeCompare(y.effectiveFrom)).filter((x) => x.effectiveFrom <= service).pop()
+        if (kept) v.amounts = [{ ...kept, effectiveFrom: service }, ...v.amounts.filter((x) => x.effectiveFrom > service)]
+      } else {
+        const first = [...v.amounts].sort((x, y) => x.effectiveFrom.localeCompare(y.effectiveFrom))[0]
+        if (first) first.effectiveFrom = service
+      }
+      v.serviceDate = service
+    }
     if (input.dailyAmount !== v.dailyAmount || input.currency !== v.currency) {
       let from = checkDate(input.amountFrom ?? today(s), 'Date du nouveau montant')
       if (from < v.serviceDate) from = v.serviceDate
