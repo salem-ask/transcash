@@ -50,15 +50,15 @@ export function PaymentsPage() {
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1 text-sm">
                     <span className="font-semibold tabular-nums">
-                      {l.state === 'partial' ? `${formatMoney(l.remaining, l.currency)} restants` : formatMoney(l.amount, l.currency)}
+                      {l.free ? (l.paid > 0 ? formatMoney(l.paid, l.currency) : 'Montant libre') : l.state === 'partial' ? `${formatMoney(l.remaining, l.currency)} restants` : formatMoney(l.amount, l.currency)}
                     </span>
-                    <DayStatePill day={{ kind: 'due', state: l.state }} />
+                    <DayStatePill day={{ kind: 'due', state: l.state, free: l.free }} />
                   </div>
                 </>
               )
               return (
                 <li key={l.vehicleId}>
-                  {canCreate && l.state !== 'paid' && l.driverId ? (
+                  {canCreate && (l.state !== 'paid' || l.free) && l.driverId ? (
                     <Link to={`/versements/nouveau?chauffeur=${l.driverId}`} className="flex items-center gap-3 py-2 hover:bg-surface-2" aria-label={`Encaisser ${l.driverName}, ${PAY_STATE_LABEL[l.state]}`}>
                       {row}
                     </Link>

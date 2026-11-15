@@ -18,6 +18,7 @@ const STYLE: Record<string, string> = {
 }
 
 function label(d: VehicleDay): [string, string] {
+  if (d.kind === 'due' && d.free) return [d.paid > 0 ? 'Versé' : 'Libre', d.paid > 0 ? STYLE.paid : STYLE.other]
   if (d.kind === 'due') return [PAY_STATE_LABEL[d.state], STYLE[d.state] ?? STYLE.other]
   if (d.kind === 'no_driver') return ['Sans chauffeur', STYLE.other]
   return [DAY_KIND_LABEL[d.kind], d.kind === 'breakdown' ? STYLE.breakdown : STYLE.other]
@@ -91,7 +92,9 @@ export function VehicleDaysCard({ vehicle, canMark }: { vehicle: Vehicle; canMar
               <span className="min-w-0 flex-1 text-sm">
                 <span className="block truncate">{d.driver?.name ?? '—'}</span>
                 <span className="block truncate text-xs text-ink-soft">
-                  {d.kind === 'due'
+                  {d.kind === 'due' && d.free
+                    ? `${formatMoney(d.paid, d.currency)} versés${d.objective ? ` · objectif ${formatMoney(d.objective, d.currency)}` : ''}`
+                    : d.kind === 'due'
                     ? `${formatMoney(d.paid, d.currency)} / ${formatMoney(d.expected, d.currency)}${d.mark?.kind === 'override' ? ' · exceptionnel' : ''}`
                     : (d.mark?.reason ?? '')}
                 </span>

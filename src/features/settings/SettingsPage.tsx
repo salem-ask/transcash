@@ -3,6 +3,7 @@ import { backend } from '../../data'
 import { useSession } from '../../app/session'
 import { Alert, Button, Card, Select, Spinner, Toggle, Field } from '../../components/ui'
 import { formatRate } from '../../domain/money'
+import { todayIn } from '../../domain/fleet'
 import { can } from '../../domain/permissions'
 import type { RatesBundle, Settings } from '../../domain/types'
 import { formatDateTime, WEEKDAYS } from '../../lib/format'
@@ -22,6 +23,8 @@ export function SettingsPage() {
   const [manual, setManual] = useState('')
   const [msg, setMsg] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [modeDraft, setModeDraft] = useState<'fixed' | 'free'>(bundle?.settings.paymentMode ?? 'fixed')
+  const [modeFrom, setModeFrom] = useState(todayIn(bundle?.settings.timezone ?? 'Africa/Kinshasa'))
 
   useEffect(() => {
     backend.listRates().then(setRates, (e) => setMsg({ kind: 'error', text: e.message }))
@@ -210,6 +213,47 @@ export function SettingsPage() {
           </Button>
         </Card>
       )}
+
+      <Card title="Mode de versement">
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Mode de versement">
+            {(['fixed', 'free'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={modeDraft === m}
+                disabled={!canEdit || busy !== null}
+                onClick={() => setModeDraft(m)}
+                className={`min-h-14 rounded-xl border-2 px-3 text-left disabled:cursor-not-allowed ${modeDraft === m ? 'border-brand bg-brand/10' : 'border-line'}`}
+              >
+                <span className="block font-semibold">{m === 'fixed' ? 'Montant fixe' : 'Montant libre'}</span>
+                <span className="text-xs text-ink-soft">{m === 'fixed' ? 'Dette si un jour n’est pas payé' : 'On saisit ce qui est versé, sans dette'}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-ink-soft">
+            {(s.paymentMode ?? 'fixed') === 'free'
+              ? `Montant libre en vigueur${s.paymentModeFrom ? ` depuis le ${s.paymentModeFrom.split('-').reverse().join('/')}` : ''} : le montant journalier des engins n'est qu'un objectif indicatif ; aucun jour non payé ne crée de dette.`
+              : 'Montant fixe en vigueur : chaque jour travaillé non payé devient une dette.'}
+            {s.nextPaymentMode && ` Changement prévu le ${s.nextPaymentMode.from.split('-').reverse().join('/')} : ${s.nextPaymentMode.mode === 'free' ? 'montant libre' : 'montant fixe'}.`}
+          </p>
+          {canEdit && modeDraft !== (s.paymentMode ?? 'fixed') && (
+            <div className="space-y-3 rounded-xl bg-surface-2 p-3">
+              <Field label="À partir du" type="date" value={modeFrom} onChange={(e) => setModeFrom(e.target.value)} required />
+              <p className="text-xs text-ink-soft">Les jours d'avant gardent leurs règles : les dettes déjà dues ne disparaissent pas.</p>
+              <Button
+                className="w-full"
+                busy={busy === 'settings'}
+                disabled={busy !== null || !modeFrom}
+                onClick={() => update({ paymentMode: modeDraft, paymentModeFrom: modeFrom })}
+              >
+                Passer en {modeDraft === 'free' ? 'montant libre' : 'montant fixe'}
+              </Button>
+            </div>
+          )}
+        </div>
+      </Card>
 
       <Card title="Général">
         <div className="space-y-4">

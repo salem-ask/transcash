@@ -99,7 +99,7 @@ export function DashboardPage() {
         )}
       </Card>
 
-      {isDriver && own.data && <LedgerView data={own.data} canCollect={false} />}
+      {isDriver && own.data && <LedgerView data={own.data} canCollect={false} showObjective={false} />}
 
       {data.alerts.length > 0 && (
         <Card title={`Échéances (${data.alerts.length})`} action={<Link to="/echeances" className="text-sm font-medium text-brand">Tout voir</Link>}>
@@ -169,8 +169,9 @@ export function DashboardPage() {
                       <p className="truncate text-sm text-ink-soft">{l.driverName ?? '—'}</p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1 text-sm">
-                      {l.status === 'due' ? <Money amount={l.amount} currency={l.currency} className="items-end" /> : null}
-                      {l.status === 'due' ? <DayStatePill day={{ kind: 'due', state: l.state }} /> : <Pill kind={l.status} />}
+                      {l.status === 'due' && !l.free ? <Money amount={l.amount} currency={l.currency} className="items-end" /> : null}
+                      {l.status === 'due' && l.free && l.paid > 0 ? <Money amount={l.paid} currency={l.currency} className="items-end" /> : null}
+                      {l.status === 'due' ? <DayStatePill day={{ kind: 'due', state: l.state, free: l.free }} /> : <Pill kind={l.status} />}
                     </div>
                   </>
                 )

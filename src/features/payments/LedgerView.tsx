@@ -15,14 +15,16 @@ const STATE_STYLE: Record<string, string> = {
   none: 'bg-surface-2 text-ink-soft',
 }
 
-export function DayStatePill({ day }: { day: Pick<LedgerDay, 'kind' | 'state'> }) {
+export function DayStatePill({ day }: { day: Pick<LedgerDay, 'kind' | 'state'> & { free?: boolean } }) {
+  if (day.free && day.kind === 'due')
+    return <span className={`inline-block shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${day.state === 'paid' ? STATE_STYLE.paid : STATE_STYLE.none}`}>{day.state === 'paid' ? 'Versé' : 'Libre'}</span>
   const label = day.kind === 'due' ? PAY_STATE_LABEL[day.state] : DAY_KIND_LABEL[day.kind]
   const style = day.kind === 'breakdown' ? 'bg-danger/10 text-danger' : day.kind === 'due' ? STATE_STYLE[day.state] : STATE_STYLE.none
   return <span className={`inline-block shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${style}`}>{label}</span>
 }
 
 /** Une ligne de journée : date, engin, attendu / payé, état. */
-export function DayRow({ d, showVehicle, today }: { d: LedgerDay; showVehicle?: boolean; today: string }) {
+export function DayRow({ d, showVehicle, today, showObjective = true }: { d: LedgerDay; showVehicle?: boolean; today: string; showObjective?: boolean }) {
   const weekday = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', timeZone: 'UTC' }).format(new Date(`${d.date}T00:00:00Z`))
   return (
     <div className="flex items-center gap-3 py-2">
@@ -31,7 +33,12 @@ export function DayRow({ d, showVehicle, today }: { d: LedgerDay; showVehicle?: 
         <span className="text-xs text-ink-soft">{d.date.slice(8, 10)}/{d.date.slice(5, 7)}</span>
       </div>
       <div className="min-w-0 flex-1 text-sm">
-        {d.kind === 'due' ? (
+        {d.kind === 'due' && d.free ? (
+          <span className="tabular-nums">
+            {d.paid > 0 ? `Versé ${formatMoney(d.paid, d.currency)}` : <span className="text-ink-soft">Montant libre</span>}
+            {showObjective && d.objective > 0 && <span className="block text-xs text-ink-soft">objectif {formatMoney(d.objective, d.currency)}</span>}
+          </span>
+        ) : d.kind === 'due' ? (
           <span className="tabular-nums">
             {d.paid > 0 && d.remaining > 0 ? (
               `${formatMoney(d.paid, d.currency)} sur ${formatMoney(d.expected, d.currency)}`
@@ -66,7 +73,7 @@ export function PaymentRow({ p, showDriver }: { p: Payment; showDriver?: boolean
   )
 }
 
-export function LedgerView({ data, canCollect }: { data: LedgerPayload; canCollect: boolean }) {
+export function LedgerView({ data, canCollect, showObjective = true }: { data: LedgerPayload; canCollect: boolean; showObjective?: boolean }) {
   const { summary, today } = data
   const hasArrears = Object.keys(summary.arrears).length > 0
   // 14 dernières journées travaillées ou marquées, plus aujourd'hui
@@ -103,7 +110,7 @@ export function LedgerView({ data, canCollect }: { data: LedgerPayload; canColle
         <Card title={`Journées impayées (${unpaid.length})`}>
           <div className="divide-y divide-line">
             {unpaid.slice(0, 31).map((d) => (
-              <DayRow key={d.vehicleId + d.date} d={d} showVehicle={multiVehicle} today={today} />
+              <DayRow key={d.vehicleId + d.date} d={d} showVehicle={multiVehicle} today={today} showObjective={showObjective} />
             ))}
           </div>
           {unpaid.length > 31 && <p className="pt-2 text-xs text-ink-soft">… et {unpaid.length - 31} autres journées plus anciennes.</p>}
@@ -116,7 +123,7 @@ export function LedgerView({ data, canCollect }: { data: LedgerPayload; canColle
         ) : (
           <div className="divide-y divide-line">
             {recent.map((d) => (
-              <DayRow key={d.vehicleId + d.date} d={d} showVehicle={multiVehicle} today={today} />
+              <DayRow key={d.vehicleId + d.date} d={d} showVehicle={multiVehicle} today={today} showObjective={showObjective} />
             ))}
           </div>
         )}

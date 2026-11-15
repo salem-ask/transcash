@@ -27,7 +27,9 @@ export function NewPaymentPage() {
   const [drivers, setDrivers] = useState<Driver[] | null>(null)
   const [driverId, setDriverId] = useState(params.get('chauffeur') ?? '')
   const [ledger, setLedger] = useState<LedgerPayload | null>(null)
-  const [kind, setKind] = useState<PaymentKind>('daily')
+  // « free » : mode montant libre (un montant pour une journée, sans dette) ; « daily » : journées cochées
+  const [kind, setKind] = useState<PaymentKind | 'free'>('daily')
+  const [freeKey, setFreeKey] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [amountText, setAmountText] = useState('')
   const [amountTouched, setAmountTouched] = useState(false)
@@ -55,6 +57,18 @@ export function NewPaymentPage() {
       setLedger(l)
       const todayDue = l.days.filter((d) => d.date === l.today && d.remaining > 0)
       setSelected(new Set(todayDue.map(keyOf)))
+      // Mode montant libre : on propose directement la saisie libre sur la journée la plus récente
+      const free = l.days.filter((d) => d.free && d.kind === 'due' && d.date <= l.today)
+      if (free.length) {
+        const last = free[free.length - 1]
+        setKind('free')
+        setFreeKey(keyOf(last))
+        setAmountTouched(true)
+        setAmountText('')
+        setCurrency(last.currency)
+      } else {
+        setKind('daily')
+      }
       const firstCur = l.days.find((d) => d.remaining > 0)?.currency
       if (firstCur) setCurrency(firstCur)
     }, (e) => setError(errorText(e)))
@@ -66,6 +80,8 @@ export function NewPaymentPage() {
   const todays = due.filter((d) => d.date === ledger?.today)
   const future = due.filter((d) => d.date > (ledger?.today ?? today)).slice(0, 14)
   const chosen = due.filter((d) => selected.has(keyOf(d))) // ordre chronologique
+  const freeDays = useMemo(() => (ledger?.days ?? []).filter((d) => d.free && d.kind === 'due' && d.date <= ledger!.today).reverse(), [ledger])
+  const freeDay = freeDays.find((d) => keyOf(d) === freeKey) ?? null
 
   const chosenTotals: Totals = {}
   for (const d of chosen) chosenTotals[d.currency] = (chosenTotals[d.currency] ?? 0) + d.remaining
@@ -98,12 +114,18 @@ export function NewPaymentPage() {
     setError(null)
     if (!amount) return setError(currency === 'CDF' ? 'Montant invalide : nombre entier de francs' : 'Montant invalide, ex. 20 ou 20,50')
     if (kind === 'daily' && chosen.length === 0) return setError('Cochez au moins une journée')
+    if (kind === 'free' && !freeDay) return setError('Choisissez la journée')
     setBusy(true)
     try {
       const saved = await backend.createPayment({
-        id: paymentId, driverId, kind, amount, currency, method, paidOn,
+        id: paymentId, driverId, kind: kind === 'extra' ? 'extra' : 'daily', amount, currency, method, paidOn,
         reference: method === 'cash' ? undefined : reference, note: note || undefined,
-        days: kind === 'daily' ? chosen.map((d) => ({ date: d.date, vehicleId: d.vehicleId })) : undefined,
+        days:
+          kind === 'free' && freeDay
+            ? [{ date: freeDay.date, vehicleId: freeDay.vehicleId }]
+            : kind === 'daily'
+              ? chosen.map((d) => ({ date: d.date, vehicleId: d.vehicleId }))
+              : undefined,
       })
       navigate(`/versements/${saved.id}?nouveau=1`, { replace: true })
     } catch (err) {
@@ -168,16 +190,37 @@ export function NewPaymentPage() {
             value={kind}
             onChange={(k) => {
               setKind(k)
-              setAmountTouched(k === 'extra')
-              if (k === 'extra') setAmountText('')
+              setAmountTouched(k !== 'daily')
+              if (k !== 'daily') setAmountText('')
             }}
             options={[
-              { id: 'daily', label: 'Journées' },
-              { id: 'extra', label: 'Exceptionnel' },
+              ...(freeDays.length ? [{ id: 'free' as const, label: 'Montant libre' }] : []),
+              ...(!freeDays.length || due.length ? [{ id: 'daily' as const, label: freeDays.length ? 'Anciennes dettes' : 'Journées' }] : []),
+              { id: 'extra' as const, label: 'Exceptionnel' },
             ]}
           />
 
-          {kind === 'daily' ? (
+          {kind === 'free' ? (
+            <Card title="Versement du jour (montant libre)">
+              <div className="space-y-2">
+                <Select label="Journée" value={freeKey} onChange={(e) => setFreeKey(e.target.value)}>
+                  {freeDays.slice(0, 31).map((d) => (
+                    <option key={keyOf(d)} value={keyOf(d)}>
+                      {new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${d.date}T00:00:00Z`))}
+                      {d.date === ledger.today ? " (aujourd'hui)" : ''}
+                      {new Set(freeDays.map((x) => x.vehicleId)).size > 1 ? ` — ${d.vehicleName}` : ''}
+                      {d.paid > 0 ? ` — déjà ${formatMoney(d.paid, d.currency)}` : ''}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-xs text-ink-soft">
+                  Saisissez ce que le chauffeur a versé : aucun montant minimum, pas de dette.
+                  {freeDay && freeDay.objective > 0 && ` Objectif indicatif : ${formatMoney(freeDay.objective, freeDay.currency)}.`}
+                  {freeDay && freeDay.paid > 0 && ' Un nouveau versement s’ajoute au précédent.'}
+                </p>
+              </div>
+            </Card>
+          ) : kind === 'daily' ? (
             <>
               {due.length === 0 && <Alert kind="info">Rien à payer : aucune journée due, ni en retard, ni à venir.</Alert>}
               {late.length > 0 && (
@@ -271,7 +314,7 @@ export function NewPaymentPage() {
           </Card>
 
           {error && <Alert>{error}</Alert>}
-          <Button type="submit" busy={busy} className="w-full" disabled={kind === 'daily' && chosen.length === 0}>
+          <Button type="submit" busy={busy} className="w-full" disabled={(kind === 'daily' && chosen.length === 0) || (kind === 'free' && !freeDay)}>
             Enregistrer{amount ? ` ${formatMoney(amount, currency)}` : ''}
           </Button>
           {kind === 'daily' && chosen.length > 0 && (
