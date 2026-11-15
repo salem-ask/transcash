@@ -54,6 +54,12 @@ function call(string $who, string $method, string $path, ?array $body = null, bo
     return [$status, json_decode((string)$out, true)];
 }
 
+
+function backup_path(string $name): string
+{
+    return dirname(__DIR__, 2) . '/.local/backups/' . $name;
+}
+
 $failures = 0;
 function check(string $label, bool $ok, mixed $detail = null): void
 {
@@ -487,6 +493,62 @@ $busExpected = $line['currency'] === $r['currency'] ? 50000 : null;
 check('l\'objectif n\'est pas compté dans l\'attendu du jour', $r['today']['debt'] >= 0 && !in_array($bus, array_column(array_filter($r['lines'], fn($l) => $l['status'] === 'due' && !$l['free']), 'vehicleId'), true), $r['today']);
 [$s, $r] = call('boss', 'PUT', '/settings', ['paymentMode' => 'fixed', 'paymentModeFrom' => $day(1)]);
 check('retour au montant fixe programmé pour demain', $s === 200 && $r['settings']['paymentMode'] === 'free' && $r['settings']['nextPaymentMode']['mode'] === 'fixed', $r['settings']);
+
+
+echo "Correction d'un versement\n";
+[$s, $orig] = call('compta', 'POST', '/payments', ['id' => $uuid(), 'driverId' => $eric, 'amount' => 1000, 'currency' => 'CDF', 'method' => 'cash',
+    'days' => [['date' => $day(0), 'vehicleId' => $bus]]]);
+$fix = ['id' => $uuid(), 'driverId' => $eric, 'amount' => 2500, 'currency' => 'CDF', 'method' => 'mobile_money', 'reference' => 'MP123',
+    'days' => [['date' => $day(0), 'vehicleId' => $bus]], 'reason' => 'Mauvais montant'];
+[$s, $r] = call('compta', 'POST', "/payments/{$orig['id']}/correct", $fix);
+check('versement corrigé : nouveau reçu, même chauffeur, nouveau montant', $s === 200 && $r['amount'] === 2500 && $r['driverId'] === $eric
+    && $r['receiptNo'] > $orig['receiptNo'] && $r['allocations'][0]['amount'] === 2500, $r);
+[$s, $old] = call('compta', 'GET', "/payments/{$orig['id']}");
+check('l\'ancien est annulé avec le motif « corrigé »', $old['cancelled'] === true && str_contains($old['cancelReason'], 'remplacé par le reçu')
+    && str_contains($old['cancelReason'], 'Mauvais montant'), $old);
+[$s, $r2] = call('compta', 'POST', "/payments/{$orig['id']}/correct", $fix);
+check('correction renvoyée (coupure réseau) : pas de doublon', $s === 200 && $r2['id'] === $r['id'], $r2);
+[$s, $r3] = call('compta', 'POST', "/payments/{$orig['id']}/correct", array_merge($fix, ['id' => $uuid()]));
+check('un versement déjà corrigé ne se corrige plus', $s === 422, $r3);
+$de = $pdo->query("SELECT id FROM payments WHERE method = 'driver_expense' AND cancelled_at IS NULL LIMIT 1")->fetchColumn();
+if ($de) {
+    [$s] = call('compta', 'POST', "/payments/$de/correct", array_merge($fix, ['id' => $uuid()]));
+    check('dépense payée par le chauffeur : se corrige depuis la dépense', $s === 422);
+}
+[$s] = call('eric', 'POST', "/payments/{$r['id']}/correct", array_merge($fix, ['id' => $uuid()]));
+check('le chauffeur ne peut pas corriger', $s === 403);
+$auditRow = $pdo->query("SELECT COUNT(*) FROM audit_log WHERE entity = 'payment' AND action = 'correct'")->fetchColumn();
+check('correction inscrite au journal', (int)$auditRow === 1);
+
+echo "Réinitialisation\n";
+call('autre', 'POST', '/drivers', ['name' => 'Chauffeur Autre', 'phone' => '0897777777']);
+[$s] = call('compta', 'POST', '/admin/reset', ['scope' => 'operations', 'confirm' => 'supprimer']);
+check('réinitialisation réservée au super admin', $s === 403);
+[$s, $r] = call('boss', 'POST', '/admin/reset', ['scope' => 'operations', 'confirm' => 'oui']);
+check('sans le mot « supprimer » : refusé', $s === 422, $r);
+$vehiclesBefore = (int)$pdo->query("SELECT COUNT(*) FROM vehicles WHERE owner_id = (SELECT owner_id FROM users WHERE id = '$bossId')")->fetchColumn();
+[$s, $r] = call('boss', 'POST', '/admin/reset', ['scope' => 'operations', 'confirm' => ' Supprimer ']);
+check('opérations effacées, sauvegarde serveur écrite', $s === 200 && $r['deleted']['payments'] > 0 && is_file(backup_path($r['backup'])), $r);
+$bk = json_decode((string)file_get_contents(backup_path($r['backup'])), true);
+check('la sauvegarde contient les versements effacés', count($bk['tables']['payments']) === $r['deleted']['payments'] && !str_contains(json_encode($bk), 'password_hash'));
+[$s, $r] = call('boss', 'GET', '/payments');
+check('plus aucun versement', $s === 200 && $r['payments'] === [], $r);
+[$s, $r] = call('boss', 'GET', '/vehicles');
+check('engins et chauffeurs conservés', count($r['vehicles']) === $vehiclesBefore && $vehiclesBefore > 0, $r);
+[$s, $r] = call('boss', 'GET', "/drivers/$eric/ledger");
+check('grand livre recalculé sans versements', $s === 200 && $r['payments'] === [], $r['payments'] ?? $r);
+[$s, $r] = call('boss', 'GET', '/audit');
+check('le journal ne garde que la réinitialisation', $s === 200 && count($r['entries']) === 1 && $r['entries'][0]['action'] === 'reset_operations', $r);
+[$s, $r] = call('boss', 'POST', '/admin/reset', ['scope' => 'all', 'confirm' => 'supprimer']);
+check('tout effacé (sauf son compte)', $s === 200 && $r['deleted']['vehicles'] > 0 && $r['deleted']['users'] > 0, $r);
+[$s] = call('compta', 'GET', '/settings');
+check('les autres comptes sont déconnectés', $s === 401);
+[$s, $r] = call('boss', 'GET', '/vehicles');
+check('plus aucun engin, le super admin reste connecté', $s === 200 && $r['vehicles'] === [], $r);
+[$s, $r] = call('boss', 'GET', '/settings');
+check('paramètres conservés', $s === 200 && isset($r['settings']['baseCurrency']), $r);
+[$s, $r] = call('autre', 'GET', '/drivers');
+check('l\'autre entreprise n\'est pas touchée', $s === 200 && count($r['drivers']) === 1, $r);
 
 echo $failures === 0 ? "\nTous les tests API passent.\n" : "\n$failures test(s) en échec.\n";
 exit($failures === 0 ? 0 : 1);

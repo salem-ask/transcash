@@ -117,6 +117,9 @@
     ],
     "backup.download": [
       "super_admin"
+    ],
+    "data.reset": [
+      "super_admin"
     ]
   }
 }
