@@ -65,6 +65,7 @@ $routes = [
     ['POST', '/payments', 'payments_create'],
     ['GET', '/payments/{id}', 'payments_get'],
     ['POST', '/payments/{id}/cancel', 'payments_cancel'],
+    ['POST', '/payments/{id}/correct', 'payments_correct'],
     ['GET', '/expenses', 'expenses_list'],
     ['POST', '/expenses', 'expenses_create'],
     ['GET', '/expenses/{id}', 'expenses_get'],
@@ -87,6 +88,7 @@ $routes = [
     ['GET', '/audit', 'audit_list'],
     ['GET', '/reports/data', 'reports_data'],
     ['GET', '/backup', 'backup_get'],
+    ['POST', '/admin/reset', 'admin_reset'],
     ['GET', '/dashboard', 'dashboard_get'],
 ];
 

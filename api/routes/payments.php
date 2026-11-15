@@ -308,6 +308,54 @@ function payments_cancel(string $id): array
 }
 
 /**
+ * Corrige un versement : l'ancien est annulé (motif « corrigé ») et le nouveau enregistré, en une seule opération.
+ * Le nouveau versement porte son propre id (généré par l'appareil) : un renvoi après coupure ne crée pas de doublon.
+ * Même chauffeur obligatoire ; une dépense payée par le chauffeur se corrige depuis la dépense.
+ */
+function payments_correct(string $id): array
+{
+    $u = require_permission('payments.edit');
+    $d = body();
+    $method = (string)($d['method'] ?? '');
+    if (!in_array($method, PAYMENT_METHODS, true)) {
+        throw new HttpError(422, 'Choisissez le mode de paiement : espèces, Mobile Money ou banque');
+    }
+    $existing = existing_payment($u, (string)($d['id'] ?? ''));
+    if ($existing) {
+        return $existing;
+    }
+    $reason = optional_string($d, 'reason', 150);
+    db()->beginTransaction();
+    try {
+        $old = query('SELECT * FROM payments WHERE id = ? AND owner_id = ? FOR UPDATE', [$id, $u['owner_id']])->fetch();
+        if (!$old) {
+            throw new HttpError(404, 'Versement introuvable');
+        }
+        if ($old['cancelled_at'] !== null) {
+            throw new HttpError(422, 'Ce versement est annulé : il ne peut plus être corrigé');
+        }
+        if ($old['method'] === 'driver_expense') {
+            throw new HttpError(422, 'Ce versement vient d\'une dépense payée par le chauffeur : corrigez la dépense');
+        }
+        $d['driverId'] = $old['driver_id'];
+        // L'ancien est annulé d'abord : ses journées redeviennent dues pour le nouveau versement
+        query('UPDATE payments SET cancelled_at = ?, cancelled_by = ?, cancel_reason = ? WHERE id = ?', [now_utc(), $u['id'], 'Corrigé', $id]);
+        $newId = record_payment($u, $d, $method);
+        $no = (int)query('SELECT receipt_no FROM payments WHERE id = ?', [$newId])->fetchColumn();
+        $text = 'Corrigé : remplacé par le reçu N° ' . str_pad((string)$no, 6, '0', STR_PAD_LEFT) . ($reason ? " — $reason" : '');
+        query('UPDATE payments SET cancel_reason = ? WHERE id = ?', [mb_substr($text, 0, 255), $id]);
+        audit($u['owner_id'], $u['id'], 'payment', $id, 'correct',
+            ['receipt' => (int)$old['receipt_no'], 'amount' => (int)$old['amount'], 'currency' => $old['currency'], 'method' => $old['method'], 'paidOn' => $old['paid_on']],
+            ['receipt' => $no, 'payment' => $newId, 'amount' => $d['amount'] ?? null, 'currency' => $d['currency'] ?? null, 'method' => $method, 'reason' => $reason]);
+        db()->commit();
+    } catch (Throwable $e) {
+        db()->rollBack();
+        throw $e;
+    }
+    return payment_detail($u['owner_id'], $newId);
+}
+
+/**
  * Marque une journée d'un engin : repos, panne, montant exceptionnel, ou retire la marque (clear).
  * Refusé si les versements déjà reçus pour ce jour dépassent le nouveau montant attendu.
  */
